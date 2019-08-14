@@ -4,11 +4,11 @@ import autograd.numpy.random as npr
 from autograd import grad
 from autograd.misc.optimizers import sgd, adam
 
-from nn_util import logistic, relu, linear, tanh
-from nn_util import mse, ce
+from reg.nn.utils import logistic, relu, linear, tanh
+from reg.nn.utils import mse, ce
 
 
-class Layer():
+class Layer:
 
     def __init__(self, size, nonlin='tanh'):
         self.size = size
@@ -45,7 +45,7 @@ class Layer():
         return dx, dw, db
 
 
-class Network():
+class NNRegressor:
 
     def __init__(self, sizes, nonlin='tanh',
                  output='logistic', loss='ce'):
@@ -94,6 +94,7 @@ class Network():
     def fit(self, y, x, nb_epochs=500, batch_size=16, lr=1e-3):
 
         nb_batches = int(np.ceil(len(x) / batch_size))
+
         def batch_indices(iter):
             idx = iter % nb_batches
             return slice(idx * batch_size, (idx + 1) * batch_size)
@@ -114,61 +115,3 @@ class Network():
     def cost(self, y, x):
         _y = self.forward(x)
         return self.loss(y, _y)
-
-
-if __name__ == '__main__':
-
-    # npr.seed(1337)
-
-    from sklearn.datasets import load_breast_cancer, load_digits, load_boston
-
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.model_selection import train_test_split
-    from sklearn.preprocessing import OneHotEncoder
-
-    # regression example
-    set = load_boston()
-
-    x, y = set['data'], set['target']
-    y = y[:, np.newaxis]
-
-    xt, xv, yt, yv = train_test_split(x, y, test_size=0.2)
-
-    nb_in = x.shape[-1]
-    nb_out = y.shape[-1]
-
-    nn = Network([nb_in, 10, nb_out], nonlin='relu', output='linear', loss='mse')
-    nn.fit(yt, xt, nb_epochs=250, batch_size=64, lr=1e-2)
-
-    print('train:', 'cost=', nn.cost(yt, xt)[0])
-    print('test:', 'cost=', nn.cost(yv, xv)[0])
-
-
-    # # classification example
-    # set = load_breast_cancer()
-    # # set = load_digits()
-    #
-    # x, y = set['data'], set['target']
-    #
-    # enc = OneHotEncoder(categories='auto')
-    # y = enc.fit_transform(y[:, np.newaxis]).toarray()
-    #
-    # xt, xv, yt, yv = train_test_split(x, y, test_size=0.2)
-    #
-    # scaler = StandardScaler()
-    # xt = scaler.fit_transform(xt)
-    # xv = scaler.fit_transform(xv)
-    #
-    # nb_in = x.shape[-1]
-    # nb_out = y.shape[-1]
-    #
-    # nn = Network([nb_in, 4, nb_out], nonlin='tanh', output='logistic', loss='ce')
-    # nn.fit(yt, xt, nb_epochs=250, batch_size=64, lr=1e-2)
-    #
-    # _yt = nn.forward(xt)
-    # class_error = np.linalg.norm(yt - np.rint(_yt), axis=1)
-    # print('train:', 'cost=', nn.cost(yt, xt)[0], 'class. error=', np.mean(class_error))
-    #
-    # _yv = nn.forward(xv)
-    # class_error = np.linalg.norm(yv - np.rint(_yv), axis=1)
-    # print('test:', 'cost=', nn.cost(yv, xv)[0], 'class. error=', np.mean(class_error))

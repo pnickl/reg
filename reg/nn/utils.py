@@ -1,6 +1,4 @@
 import autograd.numpy as np
-import autograd.numpy.random as npr
-
 from itertools import islice
 import random
 
@@ -47,6 +45,7 @@ def tanh(x):
     return h, dh
 
 
+# mean squared error
 def mse(target, out):
     l = 0.5 * np.mean(np.einsum('nk,nh->n', target - out, target - out), axis=0)
     dl = - (target - out)
