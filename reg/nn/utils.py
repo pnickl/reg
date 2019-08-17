@@ -56,5 +56,5 @@ def mse(target, out):
 def ce(target, out):
     out = np.clip(out, 1e-16, 1.0 - 1e-16)
     l = - np.mean(target * np.log(out) + (1.0 - target) * np.log(1.0 - out), axis=(0, 1))
-    dl = (out - target) / ( (1.0 - out) * out )
+    dl = (out - target) / ((1.0 - out) * out)
     return l, dl

@@ -20,24 +20,27 @@ class NNRegressor(nn.Module):
         self.nonlin = nlist[nonlin]
         self.layers = [nn.Linear(x, y) for x, y in zip(self.sizes[:-1], self.sizes[1:])]
 
-        self.loss = MSELoss()
+        self.criterion = MSELoss()
+        self.optim = None
 
     def forward(self, x):
-        _out = x
+        out = x
         for l in self.layers:
-            _out = self.nonlin(l(_out))
-        return _out
+            out = self.nonlin(l(out))
+        return out
 
     def fit(self, y, x, nb_epochs, batch_size=32, lr=1e-3):
-        self.opt = Adam([{'params': l.parameters()} for l in self.layers], lr=lr)
+        self.optim = Adam([{'params': l.parameters()} for l in self.layers], lr=lr)
 
         for n in range(nb_epochs):
             for batch in batches(batch_size, y.shape[0]):
-                self.opt.zero_grad()
-                _out = self.forward(x[batch])
-                loss = self.loss(_out, y[batch])
+                self.optim.zero_grad()
+                _y = self.forward(x[batch])
+                loss = self.criterion(_y, y[batch])
                 loss.backward()
-                self.opt.step()
+                self.optim.step()
 
-            _y = self.forward(x)
-            print('iter=', n, 'cost=', torch.mean(self.loss(y, _y)))
+            if n % 10 == 0:
+                _y = self.forward(x)
+                print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
+                print("Loss: {:.4f}".format(torch.mean(self.criterion(y, _y))))

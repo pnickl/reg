@@ -1,4 +1,4 @@
-from reg.nn.pn import Perceptron
+from reg.nn.pn_npy import Perceptron
 
 
 if __name__ == '__main__':
@@ -22,4 +22,4 @@ if __name__ == '__main__':
     perc = Perceptron(nb_in)
     perc.fit(yt, xt, nb_epochs=250, lr=0.25)
 
-    print("testing", "class. error=", perc.error(yv, xv))
+    print("testing", "class error=", perc.error(yv, xv))

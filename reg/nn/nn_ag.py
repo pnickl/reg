@@ -23,7 +23,7 @@ class NNRegressor:
                        for i, (x, y) in enumerate(zip(self.sizes[:-1], self.sizes[1:]))]
 
         llist = dict(mse=mse, ce=ce)
-        self.loss = llist[loss]
+        self.criterion = llist[loss]
 
     def forward(self, x):
         _out = x
@@ -31,7 +31,6 @@ class NNRegressor:
             nonlin = self.nonlins[i]
             act = np.einsum('nk,kh->nh', _out, w) + b
             _out = nonlin(act)[0]
-
         return _out
 
     def fit(self, y, x, nb_epochs=500, batch_size=16, lr=1e-3):
@@ -48,9 +47,10 @@ class NNRegressor:
             return self.cost(y[idx], x[idx])
 
         def _callback(params, iter, grad):
-            if iter % nb_batches == 0:
+            if iter % (nb_batches * 10) == 0:
                 self.params = params
-                print('iter=', iter, 'cost=', self.cost(y, x))
+                print('Epoch: {}/{}.............'.format(iter // nb_batches, nb_epochs), end=' ')
+                print("Loss: {:.4f}".format(self.cost(y, x)))
 
         _gradient = grad(_objective)
 
@@ -59,4 +59,4 @@ class NNRegressor:
 
     def cost(self, y, x):
         _y = self.forward(x)
-        return self.loss(y, _y)[0]
+        return self.criterion(y, _y)[0]

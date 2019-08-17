@@ -22,7 +22,9 @@ class Perceptron:
                 self.weights = self.weights - lr * (self.forward(x[n, :]) - y[n]) * x[n, :]
                 self.bias = self.bias - lr * (self.forward(x[n, :]) - y[n])
 
-            print("epoch=", l,  "class. error=", self.error(y, x))
+            if l % 10 == 0:
+                print('Epoch: {}/{}.............'.format(l, nb_epochs), end=' ')
+                print("Loss: {:.4f}".format(self.error(y, x)))
 
     def error(self, y, x):
         _y = self.forward(x)

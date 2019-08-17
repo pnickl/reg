@@ -25,7 +25,7 @@ class Layer:
 
     def forward(self, x):
         self._in = x
-        self._act = np.einsum('nk,kh->nh', x, self.weights) + self.biases
+        self._act = np.einsum('nk,kh->nh', self._in, self.weights) + self.biases
         self._out = self.nonlin(self._act)[0]
         return self._out
 
@@ -58,14 +58,13 @@ class NNRegressor:
                        for i, (x, y) in enumerate(zip(self.sizes[:-1], self.sizes[1:]))]
 
         llist = dict(mse=mse, ce=ce)
-        self.loss = llist[loss]
+        self.criterion = llist[loss]
 
     def forward(self, x):
-        _out = x
+        out = x
         for l in self.layers:
-            _out = l.forward(_out)
-
-        return _out
+            out = l.forward(out)
+        return out
 
     @property
     def params(self):
@@ -105,13 +104,14 @@ class NNRegressor:
             return self.backprop(y[idx], x[idx])
 
         def _callback(params, iter, grad):
-            if iter % nb_batches == 0:
+            if iter % (nb_batches * 10) == 0:
                 self.params = params
-                print('iter=', iter, 'cost=', self.cost(y, x)[0])
+                print('Epoch: {}/{}.............'.format(iter // nb_batches, nb_epochs), end=' ')
+                print("Loss: {:.4f}".format(self.cost(y, x)[0]))
 
         self.params = adam(_gradient, self.params, step_size=lr,
             num_iters=nb_epochs * nb_batches, callback=_callback)
 
     def cost(self, y, x):
         _y = self.forward(x)
-        return self.loss(y, _y)
+        return self.criterion(y, _y)
