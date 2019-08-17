@@ -1,5 +1,4 @@
 import torch
-from torch import nn
 import autograd.numpy as np
 
 from reg.nn import RNNRegressor
@@ -20,19 +19,16 @@ if __name__ == '__main__':
     x[:] = np.array(range(L)) + np.random.randint(-4 * T, 4 * T, N).reshape(N, 1)
     data = np.sin(x / 1.0 / T).astype('float64')
 
-    input = to_torch(data[:, :-1]).view(N, -1, input_size)
-    target = to_torch(data[:, 1:]).view(N, -1, output_size)
+    input = to_torch(data[3:, :-1]).view(7, -1, input_size)
+    target = to_torch(data[3:, 1:]).view(7, -1, output_size)
 
-    nb_epcohs = 1000
-    nb_layers = 1
-    hidden_size = 25
-    nb_samples = input.shape[0]
+    test_input = to_torch(data[:3, :-1]).view(3, -1, input_size)
+    test_target = to_torch(data[:3, 1:]).view(3, -1, output_size)
 
     rnn = RNNRegressor(input_size=input_size,
                        output_size=output_size,
-                       hidden_size=hidden_size,
-                       nb_layers=nb_layers,
-                       criterion=nn.MSELoss())
+                       hidden_size=25,
+                       nb_layers=1)
 
     rnn.fit(target, input, nb_epochs=3500, lr=5.e-4)
 

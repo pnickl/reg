@@ -17,9 +17,9 @@ if __name__ == '__main__':
     xt = scaler.fit_transform(xt)
     xv = scaler.fit_transform(xv)
 
-    nb_in = x.shape[-1]
+    input_size = x.shape[-1]
 
-    perc = Perceptron(nb_in)
+    perc = Perceptron(input_size)
     perc.fit(yt, xt, nb_epochs=250, lr=0.25)
 
     print("testing", "class error=", perc.error(yv, xv))

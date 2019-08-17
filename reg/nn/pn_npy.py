@@ -4,10 +4,10 @@ import autograd.numpy.random as npr
 
 class Perceptron:
 
-    def __init__(self, nb_in):
-        self.nb_in = nb_in
+    def __init__(self, input_size):
+        self.input_size = input_size
 
-        self.weights = npr.randn(self.nb_in)
+        self.weights = npr.randn(self.input_size)
         self.bias = npr.randn()
 
     def forward(self, x):

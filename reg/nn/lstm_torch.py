@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
+
 from torch.optim import LBFGS
-import numpy as np
 
 to_torch = lambda arr: torch.from_numpy(arr).float()
 
@@ -13,6 +13,7 @@ class LSTMRegressor(nn.Module):
         self.input_size = input_size
         self.output_size = output_size
         self.nb_neurons = nb_neurons
+        self.nb_layers = 2
 
         self.lstm0 = nn.LSTMCell(self.input_size, self.nb_neurons[0])
         self.lstm1 = nn.LSTMCell(self.nb_neurons[0], self.nb_neurons[1])
@@ -24,14 +25,18 @@ class LSTMRegressor(nn.Module):
 
     def forward(self, input, future=0):
         outputs = []
-        ht = torch.zeros(input.size(0), self.nb_neurons[0], dtype=torch.double)
-        ct = torch.zeros(input.size(0), self.nb_neurons[0], dtype=torch.double)
 
-        gt = torch.zeros(input.size(0), self.nb_neurons[1], dtype=torch.double)
-        bt = torch.zeros(input.size(0), self.nb_neurons[1], dtype=torch.double)
+        batch_size = input.size(0)
+        nb_samples = input.size(1)
 
-        for i, input_t in enumerate(input.chunk(input.size(1), dim=1)):
-            ht, ct = self.lstm0(input_t, (ht, ct))
+        ht = torch.zeros(batch_size, self.nb_neurons[0], dtype=torch.double)
+        ct = torch.zeros(batch_size, self.nb_neurons[0], dtype=torch.double)
+
+        gt = torch.zeros(batch_size, self.nb_neurons[1], dtype=torch.double)
+        bt = torch.zeros(batch_size, self.nb_neurons[1], dtype=torch.double)
+
+        for i in range(nb_samples):
+            ht, ct = self.lstm0(input[:, i, :], (ht, ct))
             gt, bt = self.lstm1(ht, (gt, bt))
             output = self.linear(gt)
             outputs += [output]
@@ -41,7 +46,8 @@ class LSTMRegressor(nn.Module):
             gt, bt = self.lstm1(ht, (gt, bt))
             output = self.linear(gt)
             outputs += [output]
-        outputs = torch.stack(outputs, 1).squeeze(2)
+
+        outputs = torch.stack(outputs, 1)
 
         return outputs
 
@@ -49,7 +55,6 @@ class LSTMRegressor(nn.Module):
         self.double()
 
         self.optim = LBFGS(self.parameters(), lr=lr)
-
         for n in range(nb_epochs):
 
             def closure():

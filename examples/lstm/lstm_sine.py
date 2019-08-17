@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 import numpy as np
 
 from reg.nn import LSTMRegressor
@@ -20,14 +19,17 @@ if __name__ == '__main__':
     x[:] = np.array(range(L)) + np.random.randint(-4 * T, 4 * T, N).reshape(N, 1)
     data = np.sin(x / 1.0 / T).astype('float64')
 
-    input = to_torch(data[3:, :-1])
-    target = to_torch(data[3:, 1:])
+    input = to_torch(data[3:, :-1]).view(7, -1, input_size)
+    target = to_torch(data[3:, 1:]).view(7, -1, output_size)
 
-    test_input = to_torch(data[:3, :-1])
-    test_target = to_torch(data[:3, 1:])
+    test_input = to_torch(data[:3, :-1]).view(3, -1, input_size)
+    test_target = to_torch(data[:3, 1:]).view(3, -1, output_size)
 
-    lstm = LSTMRegressor(input_size, output_size, nb_neurons=[10, 10])
-    lstm.fit(target, input, 25)
+    lstm = LSTMRegressor(input_size,
+                         output_size,
+                         nb_neurons=[25, 25])
+
+    lstm.fit(target, input, 50)
 
     with torch.no_grad():
         future = 1000
@@ -35,7 +37,7 @@ if __name__ == '__main__':
         y = pred.detach().numpy()
 
     plt.figure(figsize=(30, 10))
-    plt.title('Predict future values for time sequences\n(Dashlines are predicted values)', fontsize=30)
+    plt.title('Predict future values for time sequences', fontsize=30)
     plt.xlabel('x', fontsize=20)
     plt.ylabel('y', fontsize=20)
     plt.xticks(fontsize=20)
@@ -43,7 +45,8 @@ if __name__ == '__main__':
 
     def draw(yi, color):
         plt.plot(np.arange(input.size(1)), yi[:input.size(1)], color, linewidth=2.0)
-        plt.plot(np.arange(input.size(1), input.size(1) + future), yi[input.size(1):], color + ':', linewidth=2.0)
+        plt.plot(np.arange(input.size(1), input.size(1) + future),
+                 yi[input.size(1):], color + ':', linewidth=2.0)
 
     draw(y[0], 'r')
     draw(y[1], 'g')
