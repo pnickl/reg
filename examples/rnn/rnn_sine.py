@@ -3,7 +3,7 @@ import autograd.numpy as np
 
 from reg.nn import RNNRegressor
 
-to_torch = lambda arr: torch.from_numpy(arr).float()
+to_float = lambda arr: torch.from_numpy(arr).float()
 
 
 if __name__ == '__main__':
@@ -13,34 +13,29 @@ if __name__ == '__main__':
     T, L, N = 20, 250, 10
 
     input_size = 1
-    output_size = 1
+    target_size = 1
 
     x = np.empty((N, L), 'int64')
     x[:] = np.array(range(L)) + np.random.randint(-4 * T, 4 * T, N).reshape(N, 1)
     data = np.sin(x / 1.0 / T).astype('float64')
 
-    input = to_torch(data[3:, :-1]).view(7, -1, input_size)
-    target = to_torch(data[3:, 1:]).view(7, -1, output_size)
+    input = to_float(data[:N - 1, :-1]).view(N - 1, -1, input_size)
+    target = to_float(data[:N - 1, 1:]).view(N - 1, -1, target_size)
 
-    test_input = to_torch(data[:3, :-1]).view(3, -1, input_size)
-    test_target = to_torch(data[:3, 1:]).view(3, -1, output_size)
+    test_input = to_float(data[N - 1, :-1]).view(-1, input_size)
+    test_target = to_float(data[N - 1, 1:]).view(-1, target_size)
 
     rnn = RNNRegressor(input_size=input_size,
-                       output_size=output_size,
+                       target_size=target_size,
                        hidden_size=25,
                        nb_layers=1)
 
-    rnn.fit(target, input, nb_epochs=3500, lr=5.e-4)
+    rnn.fit(target, input, nb_epochs=1000, lr=1.e-3)
 
-    predict = []
-    for t in range(input.shape[1]):
-        aux, _ = rnn(input[:, t].view(-1, 1, input_size))
-        predict.append(aux)
+    horizon, buffer = 200, 10
+    yhat = rnn.forcast(test_input[:buffer, :], horizon)
 
-    _target = np.array(target)
-    _predict = np.array(np.concatenate([_x.detach().numpy() for _x in predict], axis=1))
-
-    plt.plot(_target[0, ...], label='target')
-    plt.plot(_predict[0, ...], label='prediction')
+    plt.plot(test_target.numpy()[buffer:buffer + horizon + 1, :], label='target')
+    plt.plot(yhat.numpy(), label='prediction')
     plt.legend()
     plt.show()

@@ -5,7 +5,7 @@ from reg.nn.nn_ag import NNRegressor as agNetwork
 from reg.nn.nn_torch import NNRegressor as torchNetwork
 from reg.nn.nn_npy import NNRegressor as npNetwork
 
-to_torch = lambda arr: torch.from_numpy(arr).float()
+to_float = lambda arr: torch.from_numpy(arr).float()
 
 
 if __name__ == '__main__':
@@ -28,7 +28,7 @@ if __name__ == '__main__':
     nn_np = npNetwork([nb_in, 10, nb_out], nonlin='relu', output='linear', loss='mse')
 
     print('using numpy network:')
-    nn_np.fit(yt, xt, nb_epochs=250, batch_size=64, lr=1e-3)
+    nn_np.fit(yt, xt, nb_epochs=2500, batch_size=64, lr=1e-3)
 
     print('numpy', 'train:', 'cost=', nn_np.cost(yt, xt)[0])
     print('numpy', 'test:', 'cost=', nn_np.cost(yv, xv)[0])
@@ -37,21 +37,21 @@ if __name__ == '__main__':
     nn_ag = agNetwork([nb_in, 10, nb_out], nonlin='relu', output='linear', loss='mse')
 
     print('using autograd network:')
-    nn_ag.fit(yt, xt, nb_epochs=250, batch_size=64, lr=1e-3)
+    nn_ag.fit(yt, xt, nb_epochs=2500, batch_size=64, lr=1e-3)
 
     print('autograd', 'train:', 'cost=', nn_ag.cost(yt, xt))
     print('autograd', 'test:', 'cost=', nn_ag.cost(yv, xv))
 
     # fit neural network with pytorch
-    xt = to_torch(xt)
-    yt = to_torch(yt)
-    xv = to_torch(xv)
-    yv = to_torch(yv)
+    xt = to_float(xt)
+    yt = to_float(yt)
+    xv = to_float(xv)
+    yv = to_float(yv)
 
-    nn_torch = torchNetwork([nb_in, 10, nb_out], nonlin='relu')
+    nn_torch = torchNetwork([nb_in, 5, 5, nb_out], nonlin='relu')
 
     print('using pytorch network:')
-    nn_torch.fit(yt, xt, nb_epochs=250, batch_size=64, lr=1e-3)
+    nn_torch.fit(yt, xt, nb_epochs=2500, batch_size=64, lr=1e-3)
 
     _yt = nn_torch.forward(xt)
     _yv = nn_torch.forward(xv)
