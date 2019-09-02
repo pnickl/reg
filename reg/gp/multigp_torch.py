@@ -42,7 +42,7 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
             _output = self(self.input)
             loss = - mll(_output, self.target)
             loss.backward()
-            print('Iter %d/%d - Loss: %.3f' % (i + 1, nb_iter, loss.item()))
+            # print('Iter %d/%d - Loss: %.3f' % (i + 1, nb_iter, loss.item()))
             optimizer.step()
 
 
@@ -67,14 +67,15 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
         return yhat
 
     def kstep_mse(self, y, x, u, horizon):
-        from sklearn.metrics import mean_squared_error, r2_score
+        from sklearn.metrics import mean_squared_error, explained_variance_score
 
         mse, norm_mse = [], []
         for _x, _u, _y in zip(x, u, y):
             _target, _prediction = [], []
-            for t in range(_x.shape[0] - horizon):
-                _yhat = self.forcast(_x[t, :], _u[t:t + 1 + horizon, :], horizon)
+            for t in range(_x.shape[0] - horizon + 1):
+                _yhat = self.forcast(_x[t, :], _u[t:t + horizon, :], horizon)
 
+                # -1 because y is just x shifted by +1
                 _target.append(_y.numpy()[t + horizon - 1, :])
                 _prediction.append(_yhat.numpy()[-1, :])
 
@@ -84,7 +85,7 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
             _mse = mean_squared_error(_target, _prediction)
             mse.append(_mse)
 
-            _norm_mse = r2_score(_target, _prediction,
+            _norm_mse = explained_variance_score(_target, _prediction,
                                  multioutput='variance_weighted')
             norm_mse.append(_norm_mse)
 

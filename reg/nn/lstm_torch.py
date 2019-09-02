@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch.optim import LBFGS
+from torch.optim import LBFGS, Adam
 
 import numpy as np
 
@@ -49,6 +49,7 @@ class LSTMRegressor(nn.Module):
         self.double()
 
         self.optim = LBFGS(self.parameters(), lr=lr)
+        # self.optim = Adam(self.parameters(), lr=lr)
         for n in range(nb_epochs):
 
             def closure():
@@ -57,8 +58,8 @@ class LSTMRegressor(nn.Module):
                 loss = self.criterion(_y, y)
                 loss.backward()
 
-                print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
-                print("Loss: {:.6f}".format(loss.item()))
+                # print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
+                # print("Loss: {:.6f}".format(loss.item()))
 
                 return loss
 
@@ -91,16 +92,21 @@ class DynamicLSTMRegressor(LSTMRegressor):
 
     def forcast(self, x, u, horizon=1):
         with torch.no_grad():
-            buffer_size = x.size(0)
+            buffer_size = x.size(0) - 1
             ht, ct, gt, bt = self.init_hidden(1)
 
-            for t in range(buffer_size):
-                _u = u[t, :].view(1, -1)
-                _x = x[t, :].view(1, -1)
-                _in = torch.cat((_x, _u), 1)
-                ht, ct = self.l1(_in, (ht, ct))
-                gt, bt = self.l2(ht, (gt, bt))
-                _y = self.linear(gt)
+            if buffer_size == 0:
+                # no history
+                _y = x[0, :].view(1, -1)
+            else:
+                # history
+                for t in range(buffer_size):
+                    _u = u[t, :].view(1, -1)
+                    _x = x[t, :].view(1, -1)
+                    _in = torch.cat((_x, _u), 1)
+                    ht, ct = self.l1(_in, (ht, ct))
+                    gt, bt = self.l2(ht, (gt, bt))
+                    _y = self.linear(gt)
 
             yhat, _yhat = [_y], _y
             for h in range(horizon):
@@ -115,14 +121,15 @@ class DynamicLSTMRegressor(LSTMRegressor):
         return yhat
 
     def kstep_mse(self, y, x, u, horizon):
-        from sklearn.metrics import mean_squared_error, r2_score
+        from sklearn.metrics import mean_squared_error, explained_variance_score
 
         mse, norm_mse = [], []
         for _x, _u, _y in zip(x, u, y):
             _target, _prediction = [], []
-            for t in range(_x.shape[0] - horizon):
-                _yhat = self.forcast(_x[:t + 1, :], _u[:t + 1 + horizon, :], horizon)
+            for t in range(_x.shape[0] - horizon + 1):
+                _yhat = self.forcast(_x[:t + 1, :], _u[:t + horizon, :], horizon)
 
+                # -1 because y is just x shifted by +1
                 _target.append(_y.numpy()[t + horizon - 1, :])
                 _prediction.append(_yhat.numpy()[-1, :])
 
@@ -132,7 +139,7 @@ class DynamicLSTMRegressor(LSTMRegressor):
             _mse = mean_squared_error(_target, _prediction)
             mse.append(_mse)
 
-            _norm_mse = r2_score(_target, _prediction,
+            _norm_mse = explained_variance_score(_target, _prediction,
                                  multioutput='variance_weighted')
             norm_mse.append(_norm_mse)
 

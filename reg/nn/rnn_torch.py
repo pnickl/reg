@@ -83,15 +83,20 @@ class DynamicRNNRegressor(RNNRegressor):
 
     def forcast(self, x, u, horizon=1):
         with torch.no_grad():
-            buffer_size = x.size(0)
+            buffer_size = x.size(0) - 1
             _ht = self.init_hidden(1)
 
-            for t in range(buffer_size):
-                _u = u[t, :].view(1, 1, -1)
-                _x = x[t, :].view(1, 1, -1)
-                _in = torch.cat((_x, _u), 2)
-                _y, _ht = self.rnn(_in, _ht)
-                _y = self.linear(_y)
+            if buffer_size == 0:
+                # no history
+                _y = x[0, :].view(1, -1)
+            else:
+                # history
+                for t in range(buffer_size):
+                    _u = u[t, :].view(1, 1, -1)
+                    _x = x[t, :].view(1, 1, -1)
+                    _in = torch.cat((_x, _u), 2)
+                    _y, _ht = self.rnn(_in, _ht)
+                    _y = self.linear(_y)
 
             yhat, _yhat = [_y], _y
             for h in range(horizon):
@@ -105,14 +110,15 @@ class DynamicRNNRegressor(RNNRegressor):
         return yhat
 
     def kstep_mse(self, y, x, u, horizon):
-        from sklearn.metrics import mean_squared_error, r2_score
+        from sklearn.metrics import mean_squared_error, explained_variance_score
 
         mse, norm_mse = [], []
         for _x, _u, _y in zip(x, u, y):
             _target, _prediction = [], []
-            for t in range(_x.shape[0] - horizon):
-                _yhat = self.forcast(_x[:t + 1, :], _u[:t + 1 + horizon, :], horizon)
+            for t in range(_x.shape[0] - horizon + 1):
+                _yhat = self.forcast(_x[:t + 1, :], _u[:t + horizon, :], horizon)
 
+                # -1 because y is just x shifted by +1
                 _target.append(_y.numpy()[t + horizon - 1, :])
                 _prediction.append(_yhat.numpy()[-1, :])
 
@@ -122,7 +128,7 @@ class DynamicRNNRegressor(RNNRegressor):
             _mse = mean_squared_error(_target, _prediction)
             mse.append(_mse)
 
-            _norm_mse = r2_score(_target, _prediction,
+            _norm_mse = explained_variance_score(_target, _prediction,
                                  multioutput='variance_weighted')
             norm_mse.append(_norm_mse)
 

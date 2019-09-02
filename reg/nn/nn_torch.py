@@ -44,10 +44,10 @@ class NNRegressor(nn.Module):
                 loss.backward()
                 self.optim.step()
 
-            if n % 10 == 0:
-                _y = self.forward(x)
-                print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
-                print("Loss: {:.4f}".format(torch.mean(self.criterion(y, _y))))
+            # if n % 10 == 0:
+            #     _y = self.forward(x)
+            #     print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
+            #     print("Loss: {:.4f}".format(torch.mean(self.criterion(y, _y))))
 
     def forcast(self, x, horizon=1):
         with torch.no_grad():
@@ -82,14 +82,15 @@ class DynamicNNRegressor(NNRegressor):
         return yhat
 
     def kstep_mse(self, y, x, u, horizon):
-        from sklearn.metrics import mean_squared_error, r2_score
+        from sklearn.metrics import mean_squared_error, explained_variance_score
 
         mse, norm_mse = [], []
         for _x, _u, _y in zip(x, u, y):
             _target, _prediction = [], []
-            for t in range(_x.shape[0] - horizon):
-                _yhat = self.forcast(_x[t, :], _u[t:t + 1 + horizon, :], horizon)
+            for t in range(_x.shape[0] - horizon + 1):
+                _yhat = self.forcast(_x[t, :], _u[t:t + horizon, :], horizon)
 
+                # -1 because y is just x shifted by +1
                 _target.append(_y.numpy()[t + horizon - 1, :])
                 _prediction.append(_yhat.numpy()[-1, :])
 
@@ -99,7 +100,7 @@ class DynamicNNRegressor(NNRegressor):
             _mse = mean_squared_error(_target, _prediction)
             mse.append(_mse)
 
-            _norm_mse = r2_score(_target, _prediction, multioutput='variance_weighted')
+            _norm_mse = explained_variance_score(_target, _prediction, multioutput='variance_weighted')
             norm_mse.append(_norm_mse)
 
         return np.mean(mse), np.mean(norm_mse)
