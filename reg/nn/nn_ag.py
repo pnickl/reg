@@ -55,7 +55,7 @@ class NNRegressor:
         _gradient = grad(_objective)
 
         self.params = adam(_gradient, self.params, step_size=lr,
-            num_iters=nb_epochs * nb_batches, callback=_callback)
+                           num_iters=nb_epochs * nb_batches, callback=_callback)
 
     def cost(self, y, x):
         _y = self.forward(x)

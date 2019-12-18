@@ -110,7 +110,7 @@ class NNRegressor:
                 print("Loss: {:.4f}".format(self.cost(y, x)[0]))
 
         self.params = adam(_gradient, self.params, step_size=lr,
-            num_iters=nb_epochs * nb_batches, callback=_callback)
+                           num_iters=nb_epochs * nb_batches, callback=_callback)
 
     def cost(self, y, x):
         _y = self.forward(x)

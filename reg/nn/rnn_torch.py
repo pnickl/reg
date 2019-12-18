@@ -4,6 +4,8 @@ from torch.optim import Adam
 
 import numpy as np
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 class RNNRegressor(nn.Module):
     def __init__(self, input_size, target_size,
@@ -20,15 +22,15 @@ class RNNRegressor(nn.Module):
 
         self.rnn = nn.RNN(input_size, hidden_size,
                           nb_layers, batch_first=True,
-                          nonlinearity=nonlinearity)
+                          nonlinearity=nonlinearity).to(device)
 
-        self.linear = nn.Linear(hidden_size, target_size)
+        self.linear = nn.Linear(hidden_size, target_size).to(device)
 
-        self.criterion = nn.MSELoss()
+        self.criterion = nn.MSELoss().to(device)
         self.optim = None
 
     def init_hidden(self, batch_size):
-        return torch.zeros(self.nb_layers, batch_size, self.hidden_size)
+        return torch.zeros(self.nb_layers, batch_size, self.hidden_size).to(device)
 
     def forward(self, x):
         batch_size = x.size(0)
@@ -40,6 +42,9 @@ class RNNRegressor(nn.Module):
         return out, hidden
 
     def fit(self, y, x, nb_epochs, lr=1.e-3):
+        y = y.to(device)
+        x = x.to(device)
+
         self.optim = Adam(self.parameters(), lr=lr)
 
         for n in range(nb_epochs):
@@ -50,11 +55,13 @@ class RNNRegressor(nn.Module):
             loss.backward()
             self.optim.step()
 
-            if n % 10 == 0:
-                print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
-                print("Loss: {:.6f}".format(loss.item()))
+            # if n % 10 == 0:
+            #     print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
+            #     print("Loss: {:.6f}".format(loss.item()))
 
     def forcast(self, x, horizon=1):
+        x = x.to(device)
+
         with torch.no_grad():
             buffer_size = x.size(0)
             _ht = self.init_hidden(1)
@@ -82,6 +89,9 @@ class DynamicRNNRegressor(RNNRegressor):
                                                   nonlinearity)
 
     def forcast(self, x, u, horizon=1):
+        x = x.to(device)
+        u = u.to(device)
+
         with torch.no_grad():
             buffer_size = x.size(0) - 1
             _ht = self.init_hidden(1)
@@ -107,12 +117,12 @@ class DynamicRNNRegressor(RNNRegressor):
                 yhat.append(_yhat)
 
             yhat = torch.stack(yhat, 0).view(horizon + 1, -1)
-        return yhat
+        return yhat.cpu()
 
     def kstep_mse(self, y, x, u, horizon):
         from sklearn.metrics import mean_squared_error, explained_variance_score
 
-        mse, norm_mse = [], []
+        mse, evar = [], []
         for _x, _u, _y in zip(x, u, y):
             _target, _prediction = [], []
             for t in range(_x.shape[0] - horizon + 1):
@@ -128,8 +138,8 @@ class DynamicRNNRegressor(RNNRegressor):
             _mse = mean_squared_error(_target, _prediction)
             mse.append(_mse)
 
-            _norm_mse = explained_variance_score(_target, _prediction,
-                                 multioutput='variance_weighted')
-            norm_mse.append(_norm_mse)
+            _evar = explained_variance_score(_target, _prediction,
+                                             multioutput='variance_weighted')
+            evar.append(_evar)
 
-        return np.mean(mse), np.mean(norm_mse)
+        return np.mean(mse), np.mean(evar)

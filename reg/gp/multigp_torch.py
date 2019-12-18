@@ -10,12 +10,14 @@ from gpytorch.distributions import MultitaskMultivariateNormal
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.likelihoods import MultitaskGaussianLikelihood
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 class MultiGPRegressor(gpytorch.models.ExactGP):
 
     def __init__(self, input, target):
-        self.input = input
-        self.target = target
+        self.input = input.to(device)
+        self.target = target.to(device)
 
         self.target_size = target.size(1)
 
@@ -31,8 +33,8 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
         return MultitaskMultivariateNormal(mean_x, covar_x)
 
     def fit(self, nb_iter=100):
-        self.train()
-        self.likelihood.train()
+        self.train().to(device)
+        self.likelihood.train().to(device)
 
         optimizer = Adam([{'params': self.parameters()}], lr=0.1)
         mll = ExactMarginalLogLikelihood(self.likelihood, self)
@@ -51,6 +53,9 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
         super(DynamicMultiGPRegressor, self).__init__(input, target)
 
     def forcast(self, x, u, horizon=0):
+        x = x.to(device)
+        u = u.to(device)
+
         self.eval()
         self.likelihood.eval()
 
@@ -64,12 +69,12 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
                 yhat.append(_yhat)
 
             yhat = torch.stack(yhat, 0).view(horizon + 1, -1)
-        return yhat
+        return yhat.cpu()
 
     def kstep_mse(self, y, x, u, horizon):
         from sklearn.metrics import mean_squared_error, explained_variance_score
 
-        mse, norm_mse = [], []
+        mse, evar = [], []
         for _x, _u, _y in zip(x, u, y):
             _target, _prediction = [], []
             for t in range(_x.shape[0] - horizon + 1):
@@ -85,8 +90,8 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
             _mse = mean_squared_error(_target, _prediction)
             mse.append(_mse)
 
-            _norm_mse = explained_variance_score(_target, _prediction,
-                                 multioutput='variance_weighted')
-            norm_mse.append(_norm_mse)
+            _evar = explained_variance_score(_target, _prediction,
+                                             multioutput='variance_weighted')
+            evar.append(_evar)
 
-        return np.mean(mse), np.mean(norm_mse)
+        return np.mean(mse), np.mean(evar)

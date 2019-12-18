@@ -4,6 +4,8 @@ from torch.optim import LBFGS, Adam
 
 import numpy as np
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 class LSTMRegressor(nn.Module):
     def __init__(self, input_size, target_size, nb_neurons):
@@ -14,20 +16,20 @@ class LSTMRegressor(nn.Module):
         self.nb_neurons = nb_neurons
         self.nb_layers = 2
 
-        self.l1 = nn.LSTMCell(self.input_size, self.nb_neurons[0])
-        self.l2 = nn.LSTMCell(self.nb_neurons[0], self.nb_neurons[1])
+        self.l1 = nn.LSTMCell(self.input_size, self.nb_neurons[0]).to(device)
+        self.l2 = nn.LSTMCell(self.nb_neurons[0], self.nb_neurons[1]).to(device)
 
-        self.linear = nn.Linear(self.nb_neurons[1], self.target_size)
+        self.linear = nn.Linear(self.nb_neurons[1], self.target_size).to(device)
 
-        self.criterion = nn.MSELoss()
+        self.criterion = nn.MSELoss().to(device)
         self.optim = None
 
     def init_hidden(self, batch_size):
-        ht = torch.zeros(batch_size, self.nb_neurons[0], dtype=torch.double)
-        ct = torch.zeros(batch_size, self.nb_neurons[0], dtype=torch.double)
+        ht = torch.zeros(batch_size, self.nb_neurons[0], dtype=torch.double).to(device)
+        ct = torch.zeros(batch_size, self.nb_neurons[0], dtype=torch.double).to(device)
 
-        gt = torch.zeros(batch_size, self.nb_neurons[1], dtype=torch.double)
-        bt = torch.zeros(batch_size, self.nb_neurons[1], dtype=torch.double)
+        gt = torch.zeros(batch_size, self.nb_neurons[1], dtype=torch.double).to(device)
+        bt = torch.zeros(batch_size, self.nb_neurons[1], dtype=torch.double).to(device)
 
         return ht, ct, gt, bt
 
@@ -46,6 +48,9 @@ class LSTMRegressor(nn.Module):
         return y
 
     def fit(self, y, x, nb_epochs, lr=0.5):
+        y = y.to(device)
+        x = x.to(device)
+
         self.double()
 
         self.optim = LBFGS(self.parameters(), lr=lr)
@@ -66,6 +71,8 @@ class LSTMRegressor(nn.Module):
             self.optim.step(closure)
 
     def forcast(self, x, horizon=1):
+        x = x.to(device)
+
         with torch.no_grad():
             buffer_size = x.size(0)
             ht, ct, gt, bt = self.init_hidden(1)
@@ -83,7 +90,7 @@ class LSTMRegressor(nn.Module):
                 yhat.append(_yhat)
 
             yhat = torch.stack(yhat, 0).view(horizon + 1, -1)
-        return yhat
+        return yhat.cpu()
 
 
 class DynamicLSTMRegressor(LSTMRegressor):
@@ -91,6 +98,9 @@ class DynamicLSTMRegressor(LSTMRegressor):
         super(DynamicLSTMRegressor, self).__init__(input_size, target_size, nb_neurons)
 
     def forcast(self, x, u, horizon=1):
+        x = x.to(device)
+        u = u.to(device)
+
         with torch.no_grad():
             buffer_size = x.size(0) - 1
             ht, ct, gt, bt = self.init_hidden(1)
@@ -118,12 +128,12 @@ class DynamicLSTMRegressor(LSTMRegressor):
                 yhat.append(_yhat)
 
             yhat = torch.stack(yhat, 0).view(horizon + 1, -1)
-        return yhat
+        return yhat.cpu()
 
     def kstep_mse(self, y, x, u, horizon):
         from sklearn.metrics import mean_squared_error, explained_variance_score
 
-        mse, norm_mse = [], []
+        mse, evar = [], []
         for _x, _u, _y in zip(x, u, y):
             _target, _prediction = [], []
             for t in range(_x.shape[0] - horizon + 1):
@@ -139,8 +149,8 @@ class DynamicLSTMRegressor(LSTMRegressor):
             _mse = mean_squared_error(_target, _prediction)
             mse.append(_mse)
 
-            _norm_mse = explained_variance_score(_target, _prediction,
-                                 multioutput='variance_weighted')
-            norm_mse.append(_norm_mse)
+            _evar = explained_variance_score(_target, _prediction,
+                                             multioutput='variance_weighted')
+            evar.append(_evar)
 
-        return np.mean(mse), np.mean(norm_mse)
+        return np.mean(mse), np.mean(evar)

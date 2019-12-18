@@ -9,6 +9,8 @@ import numpy as np
 
 from reg.nn.utils import batches
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 
 class NNRegressor(nn.Module):
     def __init__(self, sizes, nonlin='tanh'):
@@ -16,15 +18,15 @@ class NNRegressor(nn.Module):
 
         self.sizes = sizes
 
-        nlist = dict(relu=F.relu, tanh=F.tanh,
-                     softmax=F.log_softmax, linear=F.linear)
+        nlist = dict(relu=torch.relu, tanh=torch.tanh,
+                     softmax=torch.log_softmax, linear=F.linear)
 
         self.nonlin = nlist[nonlin]
-        self.l1 = nn.Linear(self.sizes[0], self.sizes[1])
-        self.l2 = nn.Linear(self.sizes[1], self.sizes[2])
-        self.output = nn.Linear(self.sizes[2], self.sizes[3])
+        self.l1 = nn.Linear(self.sizes[0], self.sizes[1]).to(device)
+        self.l2 = nn.Linear(self.sizes[1], self.sizes[2]).to(device)
+        self.output = nn.Linear(self.sizes[2], self.sizes[3]).to(device)
 
-        self.criterion = MSELoss()
+        self.criterion = MSELoss().to(device)
         self.optim = None
 
     def forward(self, x):
@@ -34,6 +36,9 @@ class NNRegressor(nn.Module):
         return self.output(out)
 
     def fit(self, y, x, nb_epochs, batch_size=32, lr=1e-3):
+        y = y.to(device)
+        x = x.to(device)
+
         self.optim = Adam(self.parameters(), lr=lr)
 
         for n in range(nb_epochs):
@@ -50,6 +55,8 @@ class NNRegressor(nn.Module):
             #     print("Loss: {:.4f}".format(torch.mean(self.criterion(y, _y))))
 
     def forcast(self, x, horizon=1):
+        x = x.to(device)
+
         with torch.no_grad():
             buffer_size = x.size(0)
 
@@ -64,11 +71,15 @@ class NNRegressor(nn.Module):
             yhat = torch.stack(yhat, 0).view(horizon + 1, -1)
         return yhat
 
+
 class DynamicNNRegressor(NNRegressor):
     def __init__(self, sizes, nonlin='tanh'):
         super(DynamicNNRegressor, self).__init__(sizes, nonlin)
 
     def forcast(self, x, u, horizon=1):
+        x = x.to(device)
+        u = u.to(device)
+
         with torch.no_grad():
             _yhat = x.view(1, -1)
             yhat = [x.view(1, -1)]
@@ -79,12 +90,12 @@ class DynamicNNRegressor(NNRegressor):
                 yhat.append(_yhat)
 
             yhat = torch.stack(yhat, 0).view(horizon + 1, -1)
-        return yhat
+        return yhat.cpu()
 
     def kstep_mse(self, y, x, u, horizon):
         from sklearn.metrics import mean_squared_error, explained_variance_score
 
-        mse, norm_mse = [], []
+        mse, evar = [], []
         for _x, _u, _y in zip(x, u, y):
             _target, _prediction = [], []
             for t in range(_x.shape[0] - horizon + 1):
@@ -100,7 +111,8 @@ class DynamicNNRegressor(NNRegressor):
             _mse = mean_squared_error(_target, _prediction)
             mse.append(_mse)
 
-            _norm_mse = explained_variance_score(_target, _prediction, multioutput='variance_weighted')
-            norm_mse.append(_norm_mse)
+            _evar = explained_variance_score(_target, _prediction,
+                                             multioutput='variance_weighted')
+            evar.append(_evar)
 
-        return np.mean(mse), np.mean(norm_mse)
+        return np.mean(mse), np.mean(evar)
