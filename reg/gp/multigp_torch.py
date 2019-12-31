@@ -10,7 +10,8 @@ from gpytorch.distributions import MultitaskMultivariateNormal
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.likelihoods import MultitaskGaussianLikelihood
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 
 class MultiGPRegressor(gpytorch.models.ExactGP):

@@ -9,7 +9,8 @@ import numpy as np
 
 from reg.nn.utils import batches
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 
 class NNRegressor(nn.Module):

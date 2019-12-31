@@ -4,7 +4,8 @@ from torch.optim import LBFGS, Adam
 
 import numpy as np
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 
 class LSTMRegressor(nn.Module):
