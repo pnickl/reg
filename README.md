@@ -1,3 +1,3 @@
-# Regression Algorithm
+# Regression
 
 A collection of regressors
