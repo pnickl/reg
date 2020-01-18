@@ -42,7 +42,7 @@ class RNNRegressor(nn.Module):
 
         return out, hidden
 
-    def fit(self, y, x, nb_epochs, lr=1.e-3):
+    def fit(self, y, x, nb_epochs, lr=1e-3):
         y = y.to(device)
         x = x.to(device)
 

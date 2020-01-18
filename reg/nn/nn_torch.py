@@ -14,7 +14,7 @@ device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 
 class NNRegressor(nn.Module):
-    def __init__(self, sizes, nonlin='tanh'):
+    def __init__(self, sizes, nonlin='relu'):
         super(NNRegressor, self).__init__()
 
         self.sizes = sizes
@@ -50,10 +50,10 @@ class NNRegressor(nn.Module):
                 loss.backward()
                 self.optim.step()
 
-            # if n % 10 == 0:
-            #     _y = self.forward(x)
-            #     print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
-            #     print("Loss: {:.4f}".format(torch.mean(self.criterion(y, _y))))
+            if n % 10 == 0:
+                _y = self.forward(x)
+                print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
+                print("Loss: {:.4f}".format(torch.mean(self.criterion(y, _y))))
 
     def forcast(self, x, horizon=1):
         x = x.to(device)
@@ -74,7 +74,7 @@ class NNRegressor(nn.Module):
 
 
 class DynamicNNRegressor(NNRegressor):
-    def __init__(self, sizes, nonlin='tanh'):
+    def __init__(self, sizes, nonlin='relu'):
         super(DynamicNNRegressor, self).__init__(sizes, nonlin)
 
     def forcast(self, x, u, horizon=1):
@@ -82,29 +82,29 @@ class DynamicNNRegressor(NNRegressor):
         u = u.to(device)
 
         with torch.no_grad():
-            _yhat = x.view(1, -1)
-            yhat = [x.view(1, -1)]
+            _xn = x.view(1, -1)
+            xn = [x.view(1, -1)]
             for h in range(horizon):
                 _u = u[h, :].view(1, -1)
-                _in = torch.cat((_yhat, _u), 1)
-                _yhat = self(_in)
-                yhat.append(_yhat)
+                _in = torch.cat((_xn, _u), 1)
+                _xn = _xn + self(_in)
+                xn.append(_xn)
 
-            yhat = torch.stack(yhat, 0).view(horizon + 1, -1)
-        return yhat.cpu()
+            xn = torch.stack(xn, 0).view(horizon + 1, -1)
+        return xn.cpu()
 
-    def kstep_mse(self, y, x, u, horizon):
+    def kstep_mse(self, xn, x, u, horizon):
         from sklearn.metrics import mean_squared_error, explained_variance_score
 
         mse, evar = [], []
-        for _x, _u, _y in zip(x, u, y):
+        for _x, _u, _xn in zip(x, u, xn):
             _target, _prediction = [], []
             for t in range(_x.shape[0] - horizon + 1):
-                _yhat = self.forcast(_x[t, :], _u[t:t + horizon, :], horizon)
+                _xn_hat = self.forcast(_x[t, :], _u[t:t + horizon, :], horizon)
 
-                # -1 because y is just x shifted by +1
-                _target.append(_y.numpy()[t + horizon - 1, :])
-                _prediction.append(_yhat.numpy()[-1, :])
+                # -1 because xn is just x shifted by +1
+                _target.append(_xn.numpy()[t + horizon - 1, :])
+                _prediction.append(_xn_hat.numpy()[-1, :])
 
             _target = np.vstack(_target)
             _prediction = np.vstack(_prediction)

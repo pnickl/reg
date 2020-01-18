@@ -64,8 +64,8 @@ class LSTMRegressor(nn.Module):
                 loss = self.criterion(_y, y)
                 loss.backward()
 
-                # print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
-                # print("Loss: {:.6f}".format(loss.item()))
+                print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
+                print("Loss: {:.6f}".format(loss.item()))
 
                 return loss
 

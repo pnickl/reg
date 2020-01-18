@@ -10,8 +10,8 @@ from gpytorch.distributions import MultitaskMultivariateNormal
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.likelihoods import MultitaskGaussianLikelihood
 
-# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
 
 
 class MultiGPRegressor(gpytorch.models.ExactGP):
@@ -61,29 +61,29 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
         self.likelihood.eval()
 
         with torch.no_grad():
-            _yhat = x.view(1, -1)
-            yhat = [x.view(1, -1)]
+            _xn = x.view(1, -1)
+            xn = [x.view(1, -1)]
             for h in range(horizon):
                 _u = u[h, :].view(1, -1)
-                _in = torch.cat((_yhat, _u), 1)
-                _yhat = self.likelihood(self(_in)).mean
-                yhat.append(_yhat)
+                _in = torch.cat((_xn, _u), 1)
+                _xn = _xn + self.likelihood(self(_in)).mean
+                xn.append(_xn)
 
-            yhat = torch.stack(yhat, 0).view(horizon + 1, -1)
-        return yhat.cpu()
+            xn = torch.stack(xn, 0).view(horizon + 1, -1)
+        return xn.cpu()
 
-    def kstep_mse(self, y, x, u, horizon):
+    def kstep_mse(self, xn, x, u, horizon):
         from sklearn.metrics import mean_squared_error, explained_variance_score
 
         mse, evar = [], []
-        for _x, _u, _y in zip(x, u, y):
+        for _x, _u, _xn in zip(x, u, xn):
             _target, _prediction = [], []
             for t in range(_x.shape[0] - horizon + 1):
-                _yhat = self.forcast(_x[t, :], _u[t:t + horizon, :], horizon)
+                _xn_hat = self.forcast(_x[t, :], _u[t:t + horizon, :], horizon)
 
-                # -1 because y is just x shifted by +1
-                _target.append(_y.numpy()[t + horizon - 1, :])
-                _prediction.append(_yhat.numpy()[-1, :])
+                # -1 because xn is just x shifted by +1
+                _target.append(_xn.numpy()[t + horizon - 1, :])
+                _prediction.append(_xn_hat.numpy()[-1, :])
 
             _target = np.vstack(_target)
             _prediction = np.vstack(_prediction)
