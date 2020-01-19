@@ -50,8 +50,10 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
 
 
 class DynamicMultiGPRegressor(MultiGPRegressor):
-    def __init__(self, input, target):
+    def __init__(self, input, target, incremental=True):
         super(DynamicMultiGPRegressor, self).__init__(input, target)
+
+        self.incremental = incremental
 
     def forcast(self, x, u, horizon=0):
         x = x.to(device)
@@ -66,7 +68,10 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
             for h in range(horizon):
                 _u = u[h, :].view(1, -1)
                 _in = torch.cat((_xn, _u), 1)
-                _xn = _xn + self.likelihood(self(_in)).mean
+                if self.incremental:
+                    _xn = _xn + self.likelihood(self(_in)).mean
+                else:
+                    _xn = self.likelihood(self(_in)).mean
                 xn.append(_xn)
 
             xn = torch.stack(xn, 0).view(horizon + 1, -1)

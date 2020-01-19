@@ -36,11 +36,11 @@ class NNRegressor(nn.Module):
         out = self.nonlin(self.l2(out))
         return self.output(out)
 
-    def fit(self, y, x, nb_epochs, batch_size=32, lr=1e-3):
+    def fit(self, y, x, nb_epochs, batch_size=32, lr=1e-3, l2=1e-16):
         y = y.to(device)
         x = x.to(device)
 
-        self.optim = Adam(self.parameters(), lr=lr)
+        self.optim = Adam(self.parameters(), lr=lr, weight_decay=l2)
 
         for n in range(nb_epochs):
             for batch in batches(batch_size, y.shape[0]):
@@ -74,8 +74,10 @@ class NNRegressor(nn.Module):
 
 
 class DynamicNNRegressor(NNRegressor):
-    def __init__(self, sizes, nonlin='relu'):
+    def __init__(self, sizes, nonlin='relu', incremental=False):
         super(DynamicNNRegressor, self).__init__(sizes, nonlin)
+
+        self.incremental = incremental
 
     def forcast(self, x, u, horizon=1):
         x = x.to(device)
@@ -87,7 +89,10 @@ class DynamicNNRegressor(NNRegressor):
             for h in range(horizon):
                 _u = u[h, :].view(1, -1)
                 _in = torch.cat((_xn, _u), 1)
-                _xn = _xn + self(_in)
+                if self.incremental:
+                    _xn = _xn + self(_in)
+                else:
+                    _xn = self(_in)
                 xn.append(_xn)
 
             xn = torch.stack(xn, 0).view(horizon + 1, -1)
