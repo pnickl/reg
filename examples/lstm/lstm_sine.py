@@ -32,7 +32,7 @@ if __name__ == '__main__':
     lstm.fit(target, input, nb_epochs=25)
 
     horizon, buffer = 200, 10
-    yhat = lstm.forcast(test_input[:buffer, :], horizon)
+    yhat = lstm.forcast(test_input[:buffer, :], horizon=horizon)
 
     plt.plot(test_target.numpy()[buffer:buffer + horizon + 1, :], label='target')
     plt.plot(yhat.numpy(), label='prediction')

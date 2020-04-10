@@ -33,7 +33,7 @@ if __name__ == '__main__':
     rnn.fit(target, input, nb_epochs=1000, lr=1.e-3)
 
     horizon, buffer = 200, 10
-    yhat = rnn.forcast(test_input[:buffer, :], horizon)
+    yhat = rnn.forcast(test_input[:buffer, :], horizon=horizon)
 
     plt.plot(test_target.numpy()[buffer:buffer + horizon + 1, :], label='target')
     plt.plot(yhat.numpy(), label='prediction')
