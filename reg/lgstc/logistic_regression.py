@@ -24,6 +24,7 @@ red_cmap = ListedColormap(sns.color_palette("OrRd", 3, 1).as_hex())
 green_cmap = ListedColormap(sns.color_palette("BuGn", 3, 1).as_hex())
 blue_cmap = ListedColormap(sns.color_palette("PuBu", 3, 1).as_hex())
 
+
 rc('lines', **{'linewidth': 1})
 rc('text', usetex=True)
 
@@ -60,7 +61,7 @@ class FourierFeatures:
         self.nb_feat = nb_feat
 
         self.freq = np.random.multivariate_normal(mean=np.zeros(self.nb_states),
-												  cov=np.diag(1.0 / band), size=self.nb_feat)
+                                                  cov=np.diag(1.0 / band), size=self.nb_feat)
 
         self.shift = np.random.uniform(-np.pi, np.pi, size=self.nb_feat)
 
@@ -153,7 +154,7 @@ class LogitRegression:
             for m in range(self.n_regions):
                 masked = np.ma.array(Z[:, :, n, m], mask=(np.argmax(Z[:, :, n, :], axis=-1) != m))
                 ax.imshow(masked, extent=[x_min, x_max, x_min, x_max], alpha=1., aspect='equal',
-						  # cmap=maps[m], norm=colors.LogNorm(vmin=0.35, vmax=masked.max()))
+                          # cmap=maps[m], norm=colors.LogNorm(vmin=0.35, vmax=masked.max()))
                           cmap=maps[m], norm=colors.Normalize(vmin=0.3, vmax=1.))
 
             ax = beautify(ax)

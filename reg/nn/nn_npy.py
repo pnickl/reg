@@ -16,30 +16,30 @@ class Layer:
         self.weights = npr.randn(self.size[0], self.size[-1])
         self.biases = npr.randn(self.size[-1])
 
-        self._in = None
-        self._out = None
-        self._act = None
+        self._input = None
+        self._output = None
+        self._activation = None
 
         nlist = dict(relu=relu, tanh=tanh, logistic=logistic, linear=linear)
         self.nonlin = nlist[nonlin]
 
-    def forward(self, x):
-        self._in = x
-        self._act = np.einsum('nk,kh->nh', self._in, self.weights) + self.biases
-        self._out = self.nonlin(self._act)[0]
-        return self._out
+    def forward(self, input):
+        self._input = input
+        self._activation = np.einsum('nk,kh->nh', self._input, self.weights) + self.biases
+        self._output = self.nonlin(self._activation)[0]
+        return self._output
 
     def backward(self, dh):
-        # cost gradient w.r.t. act dc/dact
-        da = dh * self.nonlin(self._act)[1]
+        # cost gradient w.r.t. act dcost/dactivation
+        da = dh * self.nonlin(self._activation)[1]
 
-        # cost gradient w.r.t. weights dc/dw
-        dw = np.einsum('nk,nh->nkh', self._in, da)
+        # cost gradient w.r.t. weights dcost/dweights
+        dw = np.einsum('nk,nh->nkh', self._input, da)
 
-        # cost gradient w.r.t. biases dc/db
+        # cost gradient w.r.t. biases dcost/dbias
         db = da
 
-        # cost gradient w.r.t. input dc/dx
+        # cost gradient w.r.t. input dcost/dinput
         dx = np.einsum('kh,nh->nk', self.weights, da)
 
         return dx, dw, db
@@ -60,11 +60,11 @@ class NNRegressor:
         llist = dict(mse=mse, ce=ce)
         self.criterion = llist[loss]
 
-    def forward(self, x):
-        out = x
+    def forward(self, input):
+        output = input
         for l in self.layers:
-            out = l.forward(out)
-        return out
+            output = l.forward(output)
+        return output
 
     @property
     def params(self):
@@ -76,11 +76,11 @@ class NNRegressor:
             self.layers[i].weights = w
             self.layers[i].biases = b
 
-    def backprop(self, y, x):
+    def backprop(self, target, input):
         dW, dB = [], []
 
-        # cost gradient w.r.t. output dc/dout
-        _, dx = self.cost(y, x)
+        # cost gradient w.r.t. output dcost/doutput
+        _, dx = self.cost(target, input)
 
         for l in reversed(self.layers):
             dx, dw, db = l.backward(dx)
@@ -90,9 +90,9 @@ class NNRegressor:
 
         return dW, dB
 
-    def fit(self, y, x, nb_epochs=500, batch_size=16, lr=1e-3):
+    def fit(self, target, input, nb_epochs=500, batch_size=16, lr=1e-3, verbose=True):
 
-        nb_batches = int(np.ceil(len(x) / batch_size))
+        nb_batches = int(np.ceil(len(input) / batch_size))
 
         def batch_indices(iter):
             idx = iter % nb_batches
@@ -101,17 +101,18 @@ class NNRegressor:
         def _gradient(params, iter):
             self.params = params
             idx = batch_indices(iter)
-            return self.backprop(y[idx], x[idx])
+            return self.backprop(target[idx], input[idx])
 
         def _callback(params, iter, grad):
             if iter % (nb_batches * 10) == 0:
                 self.params = params
-                print('Epoch: {}/{}.............'.format(iter // nb_batches, nb_epochs), end=' ')
-                print("Loss: {:.4f}".format(self.cost(y, x)[0]))
+                if verbose:
+                    print('Epoch: {}/{}.............'.format(iter // nb_batches, nb_epochs), end=' ')
+                    print("Loss: {:.4f}".format(self.cost(target, input)[0]))
 
         self.params = adam(_gradient, self.params, step_size=lr,
                            num_iters=nb_epochs * nb_batches, callback=_callback)
 
-    def cost(self, y, x):
-        _y = self.forward(x)
-        return self.criterion(y, _y)
+    def cost(self, target, input):
+        _output = self.forward(input)
+        return self.criterion(target, _output)

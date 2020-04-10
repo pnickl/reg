@@ -5,14 +5,6 @@ import random
 
 def batches(batch_size, data_size):
     """
-    Helper function for doing SGD on mini-batches.
-
-    This function returns a generator returning random sub-samples.
-
-    Example:
-        If data_size = 5 and batch_size = 2, then the output might be
-        out = ((0, 3), (2, 1), (4,)).
-
     :param batch_size: number of samples in each mini-batch
     :param data_size: total number of samples
     :return: generator of lists of indices
@@ -46,15 +38,15 @@ def tanh(x):
 
 
 # mean squared error
-def mse(target, out):
-    l = 0.5 * np.mean(np.einsum('nk,nh->n', target - out, target - out), axis=0)
-    dl = - (target - out)
+def mse(target, output):
+    l = 0.5 * np.mean(np.einsum('nk,nh->n', target - output, target - output), axis=0)
+    dl = - (target - output)
     return l, dl
 
 
 # cross entropy
-def ce(target, out):
-    out = np.clip(out, 1e-16, 1.0 - 1e-16)
-    l = - np.mean(target * np.log(out) + (1.0 - target) * np.log(1.0 - out), axis=(0, 1))
-    dl = (out - target) / ((1.0 - out) * out)
+def ce(target, output):
+    out = np.clip(output, 1e-16, 1.0 - 1e-16)
+    l = - np.mean(target * np.log(output) + (1.0 - target) * np.log(1.0 - out), axis=(0, 1))
+    dl = (output - target) / ((1.0 - output) * output)
     return l, dl

@@ -25,17 +25,17 @@ class NNRegressor:
         llist = dict(mse=mse, ce=ce)
         self.criterion = llist[loss]
 
-    def forward(self, x):
-        _out = x
+    def forward(self, input):
+        _output = input
         for i, (w, b) in enumerate(self.params):
             nonlin = self.nonlins[i]
-            act = np.einsum('nk,kh->nh', _out, w) + b
-            _out = nonlin(act)[0]
-        return _out
+            activation = np.einsum('nk,kh->nh', _output, w) + b
+            _output = nonlin(activation)[0]
+        return _output
 
-    def fit(self, y, x, nb_epochs=500, batch_size=16, lr=1e-3):
+    def fit(self, target, input, nb_epochs=500, batch_size=16, lr=1e-3, verbose=True):
 
-        nb_batches = int(np.ceil(len(x) / batch_size))
+        nb_batches = int(np.ceil(len(input) / batch_size))
 
         def batch_indices(iter):
             idx = iter % nb_batches
@@ -44,19 +44,20 @@ class NNRegressor:
         def _objective(params, iter):
             self.params = params
             idx = batch_indices(iter)
-            return self.cost(y[idx], x[idx])
+            return self.cost(target[idx], input[idx])
 
         def _callback(params, iter, grad):
             if iter % (nb_batches * 10) == 0:
                 self.params = params
-                print('Epoch: {}/{}.............'.format(iter // nb_batches, nb_epochs), end=' ')
-                print("Loss: {:.4f}".format(self.cost(y, x)))
+                if verbose:
+                    print('Epoch: {}/{}.............'.format(iter // nb_batches, nb_epochs), end=' ')
+                    print("Loss: {:.4f}".format(self.cost(target, input)))
 
         _gradient = grad(_objective)
 
         self.params = adam(_gradient, self.params, step_size=lr,
                            num_iters=nb_epochs * nb_batches, callback=_callback)
 
-    def cost(self, y, x):
-        _y = self.forward(x)
-        return self.criterion(y, _y)[0]
+    def cost(self, target, input):
+        _output = self.forward(input)
+        return self.criterion(target, _output)[0]

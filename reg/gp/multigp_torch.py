@@ -4,100 +4,113 @@ from torch.optim import Adam
 
 import gpytorch
 
-from gpytorch.means import MultitaskMean, ConstantMean, ZeroMean
+from gpytorch.means import MultitaskMean, ZeroMean
 from gpytorch.kernels import MultitaskKernel, RBFKernel
 from gpytorch.distributions import MultitaskMultivariateNormal
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.likelihoods import MultitaskGaussianLikelihood
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-# device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
-
 
 class MultiGPRegressor(gpytorch.models.ExactGP):
 
-    def __init__(self, input, target):
-        self.input = input.to(device)
-        self.target = target.to(device)
+    def __init__(self, target_size, device='cpu'):
+        if device == 'gpu' and torch.cuda.is_available():
+            self.device = torch.device('cuda:0')
+        else:
+            self.device = torch.device('cpu')
 
-        self.target_size = target.size(1)
+        self.target_size = target_size
 
         _likelihood = MultitaskGaussianLikelihood(num_tasks=self.target_size)
-        super(MultiGPRegressor, self).__init__(input, target, _likelihood)
+        super(MultiGPRegressor, self).__init__(train_inputs=None,
+                                               train_targets=None,
+                                               likelihood=_likelihood)
 
         self.mean_module = MultitaskMean(ZeroMean(), num_tasks=self.target_size)
         self.covar_module = MultitaskKernel(RBFKernel(), num_tasks=self.target_size, rank=1)
 
-    def forward(self, x):
-        mean_x = self.mean_module(x)
-        covar_x = self.covar_module(x)
-        return MultitaskMultivariateNormal(mean_x, covar_x)
+    @property
+    def model(self):
+        return self
 
-    def fit(self, nb_iter=100):
-        self.train().to(device)
-        self.likelihood.train().to(device)
+    def forward(self, input):
+        mean = self.mean_module(input)
+        covar = self.covar_module(input)
+        return MultitaskMultivariateNormal(mean, covar)
 
-        optimizer = Adam([{'params': self.parameters()}], lr=0.1)
-        mll = ExactMarginalLogLikelihood(self.likelihood, self)
+    def fit(self, target, input, nb_iter=100, lr=0.1, verbose=True):
+        target = target.to(self.device)
+        input = input.to(self.device)
+
+        self.model.set_train_data(input, target, strict=False)
+        self.model.train().to(self.device)
+        self.likelihood.train().to(self.device)
+
+        optimizer = Adam([{'params': self.parameters()}], lr=lr)
+        mll = ExactMarginalLogLikelihood(self.likelihood, self.model)
 
         for i in range(nb_iter):
             optimizer.zero_grad()
-            _output = self(self.input)
-            loss = - mll(_output, self.target)
+            _output = self.model(input)
+            loss = - mll(_output, target)
             loss.backward()
-            # print('Iter %d/%d - Loss: %.3f' % (i + 1, nb_iter, loss.item()))
+            if verbose:
+                print('Iter %d/%d - Loss: %.3f' % (i + 1, nb_iter, loss.item()))
             optimizer.step()
 
 
 class DynamicMultiGPRegressor(MultiGPRegressor):
-    def __init__(self, input, target, incremental=True):
-        super(DynamicMultiGPRegressor, self).__init__(input, target)
+    def __init__(self, state_size, incremental=True, device='cpu'):
+        super(DynamicMultiGPRegressor, self).__init__(state_size, device)
 
         self.incremental = incremental
 
-    def forcast(self, x, u, horizon=0):
-        x = x.to(device)
-        u = u.to(device)
+    def forcast(self, state, exogenous, horizon=1):
+        state = state.to(self.device)
+        exogenous = exogenous.to(self.device)
 
-        self.eval()
+        self.model.eval()
         self.likelihood.eval()
 
         with torch.no_grad():
-            _xn = x.view(1, -1)
-            xn = [x.view(1, -1)]
+            _state = state.view(1, -1)
+            forcast = [_state]
             for h in range(horizon):
-                _u = u[h, :].view(1, -1)
-                _in = torch.cat((_xn, _u), 1)
+                _exo = exogenous[h, :].view(1, -1)
+                _input = torch.cat((_state, _exo), 1)
                 if self.incremental:
-                    _xn = _xn + self.likelihood(self(_in)).mean
+                    _state = _state + self.likelihood(self(_input)).mean
                 else:
-                    _xn = self.likelihood(self(_in)).mean
-                xn.append(_xn)
+                    _state = self.likelihood(self(_input)).mean
+                forcast.append(_state)
 
-            xn = torch.stack(xn, 0).view(horizon + 1, -1)
-        return xn.cpu()
+            forcast = torch.stack(forcast, 0).view(horizon + 1, -1)
+        return forcast.cpu()
 
-    def kstep_mse(self, xn, x, u, horizon):
-        from sklearn.metrics import mean_squared_error, explained_variance_score
+    def kstep_mse(self, state, exogenous, horizon):
+        from sklearn.metrics import mean_squared_error,\
+            explained_variance_score, r2_score
 
-        mse, evar = [], []
-        for _x, _u, _xn in zip(x, u, xn):
-            _target, _prediction = [], []
-            for t in range(_x.shape[0] - horizon + 1):
-                _xn_hat = self.forcast(_x[t, :], _u[t:t + horizon, :], horizon)
+        mse, smse, evar = [], [], []
+        for _state, _exogenous in zip(state, exogenous):
+            target, forcast = [], []
 
-                # -1 because xn is just x shifted by +1
-                _target.append(_xn.numpy()[t + horizon - 1, :])
-                _prediction.append(_xn_hat.numpy()[-1, :])
+            nb_steps = _state.shape[0] - horizon + 1
+            for t in range(nb_steps):
+                _forcast = self.forcast(_state[t, :], _exogenous[t:t + horizon, :], horizon)
 
-            _target = np.vstack(_target)
-            _prediction = np.vstack(_prediction)
+                target.append(_state.numpy()[t + horizon, :])
+                forcast.append(_forcast.numpy()[-1, :])
 
-            _mse = mean_squared_error(_target, _prediction)
+            target = np.vstack(target)
+            forcast = np.vstack(forcast)
+
+            _mse = mean_squared_error(target, forcast)
+            _smse = 1. - r2_score(target, forcast, multioutput='variance_weighted')
+            _evar = explained_variance_score(target, forcast, multioutput='variance_weighted')
+
             mse.append(_mse)
-
-            _evar = explained_variance_score(_target, _prediction,
-                                             multioutput='variance_weighted')
+            smse.append(_smse)
             evar.append(_evar)
 
-        return np.mean(mse), np.mean(evar)
+        return np.mean(mse), np.mean(smse), np.mean(evar)

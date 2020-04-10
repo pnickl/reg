@@ -4,15 +4,17 @@ from torch.optim import Adam
 
 import numpy as np
 
-# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = torch.device("cpu" if torch.cuda.is_available() else "cpu")
-
 
 class RNNRegressor(nn.Module):
     def __init__(self, input_size, target_size,
                  hidden_size, nb_layers,
-                 nonlinearity='tanh'):
+                 nonlinearity='tanh', device='cpu'):
         super(RNNRegressor, self).__init__()
+
+        if device == 'gpu' and torch.cuda.is_available():
+            self.device = torch.device('cuda:0')
+        else:
+            self.device = torch.device('cpu')
 
         self.input_size = input_size
         self.target_size = target_size
@@ -23,124 +25,129 @@ class RNNRegressor(nn.Module):
 
         self.rnn = nn.RNN(input_size, hidden_size,
                           nb_layers, batch_first=True,
-                          nonlinearity=nonlinearity).to(device)
+                          nonlinearity=nonlinearity).to(self.device)
 
-        self.linear = nn.Linear(hidden_size, target_size).to(device)
+        self.linear = nn.Linear(hidden_size, target_size).to(self.device)
 
-        self.criterion = nn.MSELoss().to(device)
+        self.criterion = nn.MSELoss().to(self.device)
         self.optim = None
 
     def init_hidden(self, batch_size):
-        return torch.zeros(self.nb_layers, batch_size, self.hidden_size).to(device)
+        return torch.zeros(self.nb_layers, batch_size, self.hidden_size).to(self.device)
 
-    def forward(self, x):
-        batch_size = x.size(0)
+    def forward(self, inputs):
+        batch_size = inputs.size(0)
         hidden = self.init_hidden(batch_size)
 
-        out, hidden = self.rnn(x, hidden)
-        out = self.linear(out)
+        output, hidden = self.rnn(inputs, hidden)
+        output = self.linear(output)
 
-        return out, hidden
+        return output, hidden
 
-    def fit(self, y, x, nb_epochs, lr=1e-3):
-        y = y.to(device)
-        x = x.to(device)
+    def fit(self, target, input, nb_epochs, lr=1e-3, verbose=True):
+        target = target.to(self.device)
+        input = input.to(self.device)
 
         self.optim = Adam(self.parameters(), lr=lr)
 
         for n in range(nb_epochs):
             self.optim.zero_grad()
-            _y, hidden = self(x)
-            loss = self.criterion(_y.view(-1, self.target_size),
-                                  y.view(-1, self.target_size))
+            _output, hidden = self(input)
+            loss = self.criterion(_output.view(-1, self.target_size),
+                                  target.view(-1, self.target_size))
             loss.backward()
             self.optim.step()
 
-            # if n % 10 == 0:
-            #     print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
-            #     print("Loss: {:.6f}".format(loss.item()))
+            if verbose:
+                if n % 10 == 0:
+                    print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
+                    print("Loss: {:.6f}".format(loss.item()))
 
-    def forcast(self, x, horizon=1):
-        x = x.to(device)
+    def forcast(self, state, exogenous=None, horizon=1):
+        assert exogenous is None
+        state = state.to(self.device)
 
         with torch.no_grad():
-            buffer_size = x.size(0)
-            _ht = self.init_hidden(1)
+            buffer_size = state.size(0)
+            hidden = self.init_hidden(1)
 
             for t in range(buffer_size):
-                _y, _ht = self.rnn(x[t, :].view(1, 1, -1), _ht)
-                _y = self.linear(_y)
+                _state, hidden = self.rnn(state[t, :].view(1, 1, -1), hidden)
+                _state = self.linear(_state)
 
-            yhat, _yhat = [_y], _y
+            forcast = [_state]
             for _ in range(horizon):
-                _yhat, _ht = self.rnn(_yhat, _ht)
-                _yhat = self.linear(_yhat)
-                yhat.append(_yhat)
+                _state, hidden = self.rnn(_state, hidden)
+                _state = self.linear(_state)
+                forcast.append(_state)
 
-            yhat = torch.stack(yhat, 0).view(horizon + 1, -1)
-        return yhat
+            forcast = torch.stack(forcast, 0).view(horizon + 1, -1)
+        return forcast
 
 
 class DynamicRNNRegressor(RNNRegressor):
     def __init__(self, input_size, target_size,
                  hidden_size, nb_layers,
-                 nonlinearity='tanh'):
+                 nonlinearity='tanh', device='cpu'):
         super(DynamicRNNRegressor, self).__init__(input_size, target_size,
                                                   hidden_size, nb_layers,
-                                                  nonlinearity)
+                                                  nonlinearity, device)
 
-    def forcast(self, x, u, horizon=1):
-        x = x.to(device)
-        u = u.to(device)
+    def forcast(self, state, exogenous=None, horizon=1):
+        state = state.to(self.device)
+        exogenous = exogenous.to(self.device)
 
         with torch.no_grad():
-            buffer_size = x.size(0) - 1
-            _ht = self.init_hidden(1)
+            buffer_size = state.size(0) - 1
+            hidden = self.init_hidden(1)
 
             if buffer_size == 0:
                 # no history
-                _y = x[0, :].view(1, -1)
+                _state = state[0, :].view(1, -1)
             else:
                 # history
                 for t in range(buffer_size):
-                    _u = u[t, :].view(1, 1, -1)
-                    _x = x[t, :].view(1, 1, -1)
-                    _in = torch.cat((_x, _u), 2)
-                    _y, _ht = self.rnn(_in, _ht)
-                    _y = self.linear(_y)
+                    _exo = exogenous[t, :].view(1, 1, -1)
+                    _hist = state[t, :].view(1, 1, -1)
+                    _input = torch.cat((_hist, _exo), 2)
+                    _state, hidden = self.rnn(_input, hidden)
+                    _state = self.linear(_state)
 
-            yhat, _yhat = [_y], _y
+            forcast = [_state]
             for h in range(horizon):
-                _u = u[buffer_size + h, :].view(1, 1, -1)
-                _in = torch.cat((_yhat, _u), 2)
-                _yhat, _ht = self.rnn(_in, _ht)
-                _yhat = self.linear(_yhat)
-                yhat.append(_yhat)
+                _exo = exogenous[buffer_size + h, :].view(1, 1, -1)
+                _input = torch.cat((_state, _exo), 2)
+                _state, hidden = self.rnn(_input, hidden)
+                _state = self.linear(_state)
+                forcast.append(_state)
 
-            yhat = torch.stack(yhat, 0).view(horizon + 1, -1)
-        return yhat.cpu()
+            forcast = torch.stack(forcast, 0).view(horizon + 1, -1)
+        return forcast.cpu()
 
-    def kstep_mse(self, y, x, u, horizon):
-        from sklearn.metrics import mean_squared_error, explained_variance_score
+    def kstep_mse(self, state, exogenous, horizon):
+        from sklearn.metrics import mean_squared_error,\
+            explained_variance_score, r2_score
 
-        mse, evar = [], []
-        for _x, _u, _y in zip(x, u, y):
-            _target, _prediction = [], []
-            for t in range(_x.shape[0] - horizon + 1):
-                _yhat = self.forcast(_x[:t + 1, :], _u[:t + horizon, :], horizon)
+        mse, smse, evar = [], [], []
+        for _state, _exogenous in zip(state, exogenous):
+            target, forcast = [], []
 
-                # -1 because y is just x shifted by +1
-                _target.append(_y.numpy()[t + horizon - 1, :])
-                _prediction.append(_yhat.numpy()[-1, :])
+            nb_steps = _state.shape[0] - horizon + 1
+            for t in range(nb_steps):
+                _forcast = self.forcast(_state[t, :], _exogenous[t:t + horizon, :], horizon)
 
-            _target = np.vstack(_target)
-            _prediction = np.vstack(_prediction)
+                target.append(_state.numpy()[t + horizon, :])
+                forcast.append(_forcast.numpy()[-1, :])
 
-            _mse = mean_squared_error(_target, _prediction)
+            target = np.vstack(target)
+            forcast = np.vstack(forcast)
+
+            _mse = mean_squared_error(target, forcast)
+            _smse = 1. - r2_score(target, forcast, multioutput='variance_weighted')
+            _evar = explained_variance_score(target, forcast, multioutput='variance_weighted')
+
             mse.append(_mse)
-
-            _evar = explained_variance_score(_target, _prediction,
-                                             multioutput='variance_weighted')
+            smse.append(_smse)
             evar.append(_evar)
 
-        return np.mean(mse), np.mean(evar)
+        return np.mean(mse), np.mean(smse), np.mean(evar)
