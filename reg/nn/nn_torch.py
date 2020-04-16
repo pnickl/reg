@@ -1,13 +1,18 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as func
 
 from torch.nn.modules.loss import MSELoss
-from torch.optim import Adam
+from torch.optim import Adam, SGD
 
 import numpy as np
 
+from sklearn.decomposition import PCA
+
 from reg.nn.utils import batches
+from reg.gp.utils import transform, inverse_transform
+from reg.gp.utils import ensure_args_torch_floats
+from reg.gp.utils import ensure_res_numpy_floats
 
 
 class NNRegressor(nn.Module):
@@ -21,8 +26,8 @@ class NNRegressor(nn.Module):
 
         self.sizes = sizes
 
-        nlist = dict(relu=torch.relu, tanh=torch.tanh,
-                     softmax=torch.log_softmax, linear=F.linear)
+        nlist = dict(relu=torch.relu, tanh=torch.tanh, splus=nn.Softplus,
+                     softmax=torch.log_softmax, linear=func.linear)
 
         self.nonlin = nlist[nonlin]
         self.l1 = nn.Linear(self.sizes[0], self.sizes[1]).to(self.device)
@@ -32,12 +37,51 @@ class NNRegressor(nn.Module):
         self.criterion = MSELoss().to(self.device)
         self.optim = None
 
-    def forward(self, input):
-        output = self.nonlin(self.l1(input))
-        output = self.nonlin(self.l2(output))
-        return self.output(output)
+        self.target_size = self.sizes[-1]
+        self.input_size = self.sizes[0]
 
-    def fit(self, target, input, nb_epochs, batch_size=32, lr=1e-3, l2=1e-16, verbose=True):
+        self.input_trans = None
+        self.target_trans = None
+
+    @ensure_args_torch_floats
+    def forward(self, inputs):
+        output = self.nonlin(self.l1(inputs.reshape(-1, self.input_size)))
+        output = self.nonlin(self.l2(output))
+        return torch.squeeze(self.output(output))
+
+    @ensure_args_torch_floats
+    @ensure_res_numpy_floats
+    def predict(self, input):
+        input = input.to(self.device)
+
+        with torch.no_grad():
+            input = transform(input, self.input_trans)
+            output = self.forward(input)
+            output = inverse_transform(output, self.target_trans)
+
+            output = output.reshape((self.target_size, ))
+
+        return output
+
+    def init_preprocess(self, target, input):
+        target = np.reshape(target, (-1, self.target_size))
+        input = np.reshape(input, (-1, self.input_size))
+
+        self.target_trans = PCA(n_components=self.target_size, whiten=True)
+        self.input_trans = PCA(n_components=self.input_size, whiten=True)
+
+        self.target_trans.fit(target)
+        self.input_trans.fit(input)
+
+    @ensure_args_torch_floats
+    def fit(self, target, input, nb_epochs=1000, batch_size=32,
+            lr=1e-3, l2=1e-32, verbose=True, preprocess=True):
+
+        if preprocess:
+            self.init_preprocess(target, input)
+            target = transform(target, self.target_trans)
+            input = transform(input, self.input_trans)
+
         target = target.to(self.device)
         input = input.to(self.device)
 
@@ -47,15 +91,17 @@ class NNRegressor(nn.Module):
             for batch in batches(batch_size, target.shape[0]):
                 self.optim.zero_grad()
                 _output = self.forward(input[batch])
-                loss = self.criterion(_output, target[batch])
+                loss = self.criterion(_output.reshape(-1, self.target_size),
+                                      target[batch].reshape(-1, self.target_size))
                 loss.backward()
                 self.optim.step()
 
-            if n % 10 == 0:
-                _output = self.forward(input)
-                if verbose:
+            if verbose:
+                if n % 50 == 0:
+                    output = self.forward(input)
                     print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
-                    print("Loss: {:.4f}".format(torch.mean(self.criterion(_output, target))))
+                    print("Loss: {:.4f}".format(self.criterion(output.reshape(-1, self.target_size),
+                                                               target.reshape(-1, self.target_size))))
 
 
 class DynamicNNRegressor(NNRegressor):
@@ -65,24 +111,36 @@ class DynamicNNRegressor(NNRegressor):
 
         self.incremental = incremental
 
-    def forcast(self, state, exogenous=None, horizon=1):
-        state = state.to(self.device)
-        exogenous = exogenous.to(self.device)
+    @ensure_args_torch_floats
+    @ensure_res_numpy_floats
+    def predict(self, input):
+        input = input.to(self.device)
 
         with torch.no_grad():
-            _state = state.view(1, -1)
+            _input = transform(input, self.input_trans)
+            output = self.forward(_input)
+            output = inverse_transform(output, self.target_trans)
+
+            output = output.reshape((self.target_size, ))
+
+        if self.incremental:
+            return (input[:self.target_size] + output).cpu()
+        else:
+            return output.cpu()
+
+    def forcast(self, state, exogenous, horizon=1):
+
+        with torch.no_grad():
+            _state = state
             forcast = [_state]
             for h in range(horizon):
-                _exo = exogenous[h, :].view(1, -1)
-                _input = torch.cat((_state, _exo), 1)
-                if self.incremental:
-                    _state = _state + self(_input)
-                else:
-                    _state = self(_input)
+                _exo = exogenous[h, :]
+                _input = np.hstack((_state, _exo))
+                _state = self.predict(_input)
                 forcast.append(_state)
 
-            forcast = torch.stack(forcast, 0).view(horizon + 1, -1)
-        return forcast.cpu()
+            forcast = np.vstack(forcast)
+        return forcast
 
     def kstep_mse(self, state, exogenous, horizon):
         from sklearn.metrics import mean_squared_error,\
@@ -92,12 +150,14 @@ class DynamicNNRegressor(NNRegressor):
         for _state, _exogenous in zip(state, exogenous):
             target, forcast = [], []
 
-            nb_steps = _state.shape[0] - horizon + 1
+            nb_steps = _state.shape[0] - horizon
             for t in range(nb_steps):
-                _forcast = self.forcast(_state[t, :], _exogenous[t:t + horizon, :], horizon)
+                _forcast = self.forcast(_state[t, :],
+                                        _exogenous[t:t + horizon, :],
+                                        horizon)
 
-                target.append(_state.numpy()[t + horizon, :])
-                forcast.append(_forcast.numpy()[-1, :])
+                target.append(_state[t + horizon, :])
+                forcast.append(_forcast[-1, :])
 
             target = np.vstack(target)
             forcast = np.vstack(forcast)

@@ -4,6 +4,12 @@ from torch.optim import Adam
 
 import numpy as np
 
+from sklearn.decomposition import PCA
+
+from reg.nn.utils import transform, inverse_transform
+from reg.nn.utils import ensure_args_torch_floats
+from reg.nn.utils import ensure_res_numpy_floats
+
 
 class RNNRegressor(nn.Module):
     def __init__(self, input_size, target_size,
@@ -32,6 +38,9 @@ class RNNRegressor(nn.Module):
         self.criterion = nn.MSELoss().to(self.device)
         self.optim = None
 
+        self.input_trans = None
+        self.target_trans = None
+
     def init_hidden(self, batch_size):
         return torch.zeros(self.nb_layers, batch_size, self.hidden_size).to(self.device)
 
@@ -44,7 +53,25 @@ class RNNRegressor(nn.Module):
 
         return output, hidden
 
-    def fit(self, target, input, nb_epochs, lr=1e-3, verbose=True):
+    def init_preprocess(self, target, input):
+        target_size = target.shape[-1]
+        input_size = input.shape[-1]
+
+        self.target_trans = PCA(n_components=target_size, whiten=True)
+        self.input_trans = PCA(n_components=input_size, whiten=True)
+
+        self.target_trans.fit(target.reshape(-1, target_size))
+        self.input_trans.fit(input.reshape(-1, input_size))
+
+    @ensure_args_torch_floats
+    def fit(self, target, input, nb_epochs, lr=1e-3,
+            verbose=True, preprocess=True):
+
+        if preprocess:
+            self.init_preprocess(target, input)
+            target = transform(target, self.target_trans)
+            input = transform(input, self.input_trans)
+
         target = target.to(self.device)
         input = input.to(self.device)
 
@@ -53,36 +80,61 @@ class RNNRegressor(nn.Module):
         for n in range(nb_epochs):
             self.optim.zero_grad()
             _output, hidden = self(input)
-            loss = self.criterion(_output.view(-1, self.target_size),
-                                  target.view(-1, self.target_size))
+            loss = self.criterion(_output.reshape(-1, self.target_size),
+                                  target.reshape(-1, self.target_size))
             loss.backward()
             self.optim.step()
 
             if verbose:
-                if n % 10 == 0:
+                if n % 50 == 0:
+                    output, _ = self.forward(input)
                     print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
-                    print("Loss: {:.6f}".format(loss.item()))
+                    print("Loss: {:.6f}".format(self.criterion(output.reshape(-1, self.target_size),
+                                                               target.reshape(-1, self.target_size))))
+
+    @ensure_args_torch_floats
+    @ensure_res_numpy_floats
+    def predict(self, input, hidden):
+        input = transform(input, self.input_trans)
+
+        if hidden is None:
+            hidden = self.init_hidden(1)
+
+        input = input.to(self.device)
+        for _h in hidden:
+            _h.to(self.device)
+
+        _output, hidden = self.rnn(input.view(-1, 1, self.input_size), hidden)
+        output = self.linear(_output)
+
+        output = inverse_transform(output, self.target_trans).cpu()
+        output = output.reshape((self.target_size, ))
+
+        return output, hidden
 
     def forcast(self, state, exogenous=None, horizon=1):
         assert exogenous is None
-        state = state.to(self.device)
 
         with torch.no_grad():
-            buffer_size = state.size(0)
-            hidden = self.init_hidden(1)
+            _hidden = None
 
-            for t in range(buffer_size):
-                _state, hidden = self.rnn(state[t, :].view(1, 1, -1), hidden)
-                _state = self.linear(_state)
+            if state.ndim == 1:
+                state = np.atleast_2d(state)
 
-            forcast = [_state]
-            for _ in range(horizon):
-                _state, hidden = self.rnn(_state, hidden)
-                _state = self.linear(_state)
-                forcast.append(_state)
+            buffer_size = state.shape[0] - 1
+            if buffer_size == 0:
+                _state = state[0, :]
+            else:
+                for t in range(buffer_size):
+                    _state, _hidden = self.predict(state[t, :], _hidden)
 
-            forcast = torch.stack(forcast, 0).view(horizon + 1, -1)
-        return forcast
+                forcast = [_state]
+                for _ in range(horizon):
+                    _state, _hidden = self.predict(_state, _hidden)
+                    forcast.append(_state)
+
+                forcast = np.vstack(forcast)
+            return forcast
 
 
 class DynamicRNNRegressor(RNNRegressor):
@@ -94,35 +146,32 @@ class DynamicRNNRegressor(RNNRegressor):
                                                   nonlinearity, device)
 
     def forcast(self, state, exogenous=None, horizon=1):
-        state = state.to(self.device)
-        exogenous = exogenous.to(self.device)
 
         with torch.no_grad():
-            buffer_size = state.size(0) - 1
-            hidden = self.init_hidden(1)
+            _hidden = None
 
+            if state.ndim == 1:
+                state = np.atleast_2d(state)
+
+            buffer_size = state.shape[0] - 1
             if buffer_size == 0:
-                # no history
-                _state = state[0, :].view(1, -1)
+                _state = state[0, :]
             else:
-                # history
                 for t in range(buffer_size):
-                    _exo = exogenous[t, :].view(1, 1, -1)
-                    _hist = state[t, :].view(1, 1, -1)
-                    _input = torch.cat((_hist, _exo), 2)
-                    _state, hidden = self.rnn(_input, hidden)
-                    _state = self.linear(_state)
+                    _exo = exogenous[t, :]
+                    _hist = state[t, :]
+                    _input = np.hstack((_hist, _exo))
+                    _state, _hidden = self.predict(_input, _hidden)
 
             forcast = [_state]
             for h in range(horizon):
-                _exo = exogenous[buffer_size + h, :].view(1, 1, -1)
-                _input = torch.cat((_state, _exo), 2)
-                _state, hidden = self.rnn(_input, hidden)
-                _state = self.linear(_state)
+                _exo = exogenous[buffer_size + h, :]
+                _input = np.hstack((_state, _exo))
+                _state, _hidden = self.predict(_input, _hidden)
                 forcast.append(_state)
 
-            forcast = torch.stack(forcast, 0).view(horizon + 1, -1)
-        return forcast.cpu()
+            forcast = np.vstack(forcast)
+        return forcast
 
     def kstep_mse(self, state, exogenous, horizon):
         from sklearn.metrics import mean_squared_error,\
@@ -132,12 +181,14 @@ class DynamicRNNRegressor(RNNRegressor):
         for _state, _exogenous in zip(state, exogenous):
             target, forcast = [], []
 
-            nb_steps = _state.shape[0] - horizon + 1
+            nb_steps = _state.shape[0] - horizon
             for t in range(nb_steps):
-                _forcast = self.forcast(_state[t, :], _exogenous[t:t + horizon, :], horizon)
+                _forcast = self.forcast(_state[:t + 1, :],
+                                        _exogenous[:t + horizon, :],
+                                        horizon)
 
-                target.append(_state.numpy()[t + horizon, :])
-                forcast.append(_forcast.numpy()[-1, :])
+                target.append(_state[t + horizon, :])
+                forcast.append(_forcast[-1, :])
 
             target = np.vstack(target)
             forcast = np.vstack(forcast)

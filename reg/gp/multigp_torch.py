@@ -10,6 +10,12 @@ from gpytorch.distributions import MultitaskMultivariateNormal
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.likelihoods import MultitaskGaussianLikelihood
 
+from sklearn.decomposition import PCA
+
+from reg.gp.utils import transform, inverse_transform
+from reg.gp.utils import ensure_args_torch_floats
+from reg.gp.utils import ensure_res_numpy_floats
+
 
 class MultiGPRegressor(gpytorch.models.ExactGP):
 
@@ -29,6 +35,9 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
         self.mean_module = MultitaskMean(ZeroMean(), num_tasks=self.target_size)
         self.covar_module = MultitaskKernel(RBFKernel(), num_tasks=self.target_size, rank=1)
 
+        self.input_trans = None
+        self.target_trans = None
+
     @property
     def model(self):
         return self
@@ -36,9 +45,44 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
     def forward(self, input):
         mean = self.mean_module(input)
         covar = self.covar_module(input)
-        return MultitaskMultivariateNormal(mean, covar)
+        output = MultitaskMultivariateNormal(mean, covar)
+        return output
 
-    def fit(self, target, input, nb_iter=100, lr=0.1, verbose=True):
+    @ensure_args_torch_floats
+    @ensure_res_numpy_floats
+    def predict(self, input):
+        input = input.to(self.device)
+
+        self.model.eval()
+        self.likelihood.eval()
+
+        with torch.no_grad():
+            input = transform(input, self.input_trans)
+            output = self.likelihood(self.model(torch.unsqueeze(input, 0))).mean
+            output = inverse_transform(output, self.target_trans)
+
+            output = output.reshape((self.target_size, ))
+        return output
+
+    def init_preprocess(self, target, input):
+        target_size = target.shape[-1]
+        input_size = input.shape[-1]
+
+        self.target_trans = PCA(n_components=target_size, whiten=True)
+        self.input_trans = PCA(n_components=input_size, whiten=True)
+
+        self.target_trans.fit(target)
+        self.input_trans.fit(input)
+
+    @ensure_args_torch_floats
+    def fit(self, target, input, nb_iter=100, lr=1e-1,
+            verbose=True, preprocess=True):
+
+        if preprocess:
+            self.init_preprocess(target, input)
+            target = transform(target, self.target_trans)
+            input = transform(input, self.input_trans)
+
         target = target.to(self.device)
         input = input.to(self.device)
 
@@ -65,27 +109,42 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
 
         self.incremental = incremental
 
-    def forcast(self, state, exogenous, horizon=1):
-        state = state.to(self.device)
-        exogenous = exogenous.to(self.device)
+    @ensure_args_torch_floats
+    @ensure_res_numpy_floats
+    def predict(self, input):
+
+        input = input.to(self.device)
 
         self.model.eval()
         self.likelihood.eval()
 
         with torch.no_grad():
-            _state = state.view(1, -1)
+            _input = transform(input, self.input_trans)
+            output = self.likelihood(self.model(torch.unsqueeze(_input, 0))).mean
+            output = inverse_transform(output, self.target_trans)
+
+            output = output.reshape((self.target_size, ))
+
+        if self.incremental:
+            return (input[:self.target_size] + output).cpu()
+        else:
+            return output.cpu()
+
+    def forcast(self, state, exogenous, horizon=1):
+        self.model.eval()
+        self.likelihood.eval()
+
+        with torch.no_grad():
+            _state = state
             forcast = [_state]
             for h in range(horizon):
-                _exo = exogenous[h, :].view(1, -1)
-                _input = torch.cat((_state, _exo), 1)
-                if self.incremental:
-                    _state = _state + self.likelihood(self(_input)).mean
-                else:
-                    _state = self.likelihood(self(_input)).mean
+                _exo = exogenous[h, :]
+                _input = np.hstack((_state, _exo))
+                _state = self.predict(_input)
                 forcast.append(_state)
 
-            forcast = torch.stack(forcast, 0).view(horizon + 1, -1)
-        return forcast.cpu()
+            forcast = np.vstack(forcast)
+        return forcast
 
     def kstep_mse(self, state, exogenous, horizon):
         from sklearn.metrics import mean_squared_error,\
@@ -95,12 +154,14 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
         for _state, _exogenous in zip(state, exogenous):
             target, forcast = [], []
 
-            nb_steps = _state.shape[0] - horizon + 1
+            nb_steps = _state.shape[0] - horizon
             for t in range(nb_steps):
-                _forcast = self.forcast(_state[t, :], _exogenous[t:t + horizon, :], horizon)
+                _forcast = self.forcast(_state[t, :],
+                                        _exogenous[t:t + horizon, :],
+                                        horizon)
 
-                target.append(_state.numpy()[t + horizon, :])
-                forcast.append(_forcast.numpy()[-1, :])
+                target.append(_state[t + horizon, :])
+                forcast.append(_forcast[-1, :])
 
             target = np.vstack(target)
             forcast = np.vstack(forcast)
