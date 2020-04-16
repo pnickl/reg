@@ -15,16 +15,18 @@ from sklearn.decomposition import PCA
 from reg.gp.utils import transform, inverse_transform
 from reg.gp.utils import ensure_args_torch_floats
 from reg.gp.utils import ensure_res_numpy_floats
+from reg.gp.utils import atleast_2d
 
 
 class MultiGPRegressor(gpytorch.models.ExactGP):
 
-    def __init__(self, target_size, device='cpu'):
+    def __init__(self, input_size, target_size, device='cpu'):
         if device == 'gpu' and torch.cuda.is_available():
             self.device = torch.device('cuda:0')
         else:
             self.device = torch.device('cpu')
 
+        self.input_size = input_size
         self.target_size = target_size
 
         _likelihood = MultitaskGaussianLikelihood(num_tasks=self.target_size)
@@ -51,28 +53,24 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
-        input = input.to(self.device)
-
         self.model.eval()
         self.likelihood.eval()
 
         with torch.no_grad():
             input = transform(input, self.input_trans)
-            output = self.likelihood(self.model(torch.unsqueeze(input, 0))).mean
-            output = inverse_transform(output, self.target_trans)
+            input = atleast_2d(input, self.input_size)
 
-            output = output.reshape((self.target_size, ))
+            output = self.likelihood(self.model(input)).mean
+            output = inverse_transform(output.cpu(), self.target_trans)
+
         return output
 
     def init_preprocess(self, target, input):
-        target_size = target.shape[-1]
-        input_size = input.shape[-1]
+        self.target_trans = PCA(n_components=self.target_size, whiten=True)
+        self.input_trans = PCA(n_components=self.input_size, whiten=True)
 
-        self.target_trans = PCA(n_components=target_size, whiten=True)
-        self.input_trans = PCA(n_components=input_size, whiten=True)
-
-        self.target_trans.fit(target)
-        self.input_trans.fit(input)
+        self.target_trans.fit(target.reshape(-1, self.target_size))
+        self.input_trans.fit(input.reshape(-1, self.input_size))
 
     @ensure_args_torch_floats
     def fit(self, target, input, nb_iter=100, lr=1e-1,
@@ -87,6 +85,7 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
         input = input.to(self.device)
 
         self.model.set_train_data(input, target, strict=False)
+
         self.model.train().to(self.device)
         self.likelihood.train().to(self.device)
 
@@ -101,6 +100,8 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
             if verbose:
                 print('Iter %d/%d - Loss: %.3f' % (i + 1, nb_iter, loss.item()))
             optimizer.step()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
 
 class DynamicMultiGPRegressor(MultiGPRegressor):
@@ -112,23 +113,20 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
-
-        input = input.to(self.device)
-
         self.model.eval()
         self.likelihood.eval()
 
         with torch.no_grad():
             _input = transform(input, self.input_trans)
-            output = self.likelihood(self.model(torch.unsqueeze(_input, 0))).mean
-            output = inverse_transform(output, self.target_trans)
+            _input = _input.to(self.device)
 
-            output = output.reshape((self.target_size, ))
+            output = self.likelihood(self.model(_input)).mean
+            output = inverse_transform(output.cpu(), self.target_trans)
 
         if self.incremental:
-            return (input[:self.target_size] + output).cpu()
+            return input[..., :self.target_size] + output
         else:
-            return output.cpu()
+            return output
 
     def forcast(self, state, exogenous, horizon=1):
         self.model.eval()

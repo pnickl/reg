@@ -1,15 +1,14 @@
 import numpy as np
-
 import torch
-from torch.optim import Adam
+from torch.optim import SGD
 
 import gpytorch
 
-from gpytorch.means import ZeroMean
-from gpytorch.kernels import ScaleKernel, RBFKernel
-from gpytorch.distributions import MultivariateNormal
+from gpytorch.means import MultitaskMean, ZeroMean
+from gpytorch.kernels import MultitaskKernel, RBFKernel, InducingPointKernel
+from gpytorch.distributions import MultitaskMultivariateNormal
 from gpytorch.mlls import ExactMarginalLogLikelihood
-from gpytorch.likelihoods import GaussianLikelihood
+from gpytorch.likelihoods import MultitaskGaussianLikelihood
 
 from sklearn.decomposition import PCA
 
@@ -19,23 +18,33 @@ from reg.gp.utils import ensure_res_numpy_floats
 from reg.gp.utils import atleast_2d
 
 
-class GPRegressor(gpytorch.models.ExactGP):
+class SparseMultiGPRegressor(gpytorch.models.ExactGP):
 
-    def __init__(self, input_size, device='cpu'):
+    def __init__(self, target_size, input, inducing_size, device='cpu'):
         if device == 'gpu' and torch.cuda.is_available():
             self.device = torch.device('cuda:0')
         else:
             self.device = torch.device('cpu')
 
-        self.input_size = input_size
+        if input.ndim == 1:
+            self.input_size = 1
+        else:
+            self.input_size = input.shape[-1]
+        self.target_size = target_size
 
-        _likelihood = GaussianLikelihood()
-        super(GPRegressor, self).__init__(train_inputs=None,
-                                          train_targets=None,
-                                          likelihood=_likelihood)
+        _likelihood = MultitaskGaussianLikelihood(num_tasks=self.target_size)
+        super(SparseMultiGPRegressor, self).__init__(train_inputs=None,
+                                                     train_targets=None,
+                                                     likelihood=_likelihood)
 
-        self.mean_module = ZeroMean()
-        self.covar_module = ScaleKernel(RBFKernel())
+        self.mean_module = MultitaskMean(ZeroMean(), num_tasks=self.target_size)
+        self.base_covar_module = MultitaskKernel(RBFKernel(), num_tasks=self.target_size, rank=1)
+
+        inducing_idx = np.random.choice(len(input), inducing_size, replace=False)
+
+        self.covar_module = InducingPointKernel(self.base_covar_module,
+                                                inducing_points=input[inducing_idx, ...],
+                                                likelihood=_likelihood)
 
         self.input_trans = None
         self.target_trans = None
@@ -47,7 +56,7 @@ class GPRegressor(gpytorch.models.ExactGP):
     def forward(self, input):
         mean = self.mean_module(input)
         covar = self.covar_module(input)
-        output = MultivariateNormal(mean, covar)
+        output = MultitaskMultivariateNormal(mean, covar)
         return output
 
     @ensure_args_torch_floats
@@ -57,7 +66,7 @@ class GPRegressor(gpytorch.models.ExactGP):
         self.likelihood.eval()
 
         with torch.no_grad():
-            input = transform(input, self.input_trans).to(self.device)
+            input = transform(input, self.input_trans)
             input = atleast_2d(input, self.input_size)
 
             output = self.likelihood(self.model(input)).mean
@@ -66,15 +75,15 @@ class GPRegressor(gpytorch.models.ExactGP):
         return output
 
     def init_preprocess(self, target, input):
-        self.target_trans = PCA(n_components=1, whiten=True)
+        self.target_trans = PCA(n_components=self.target_size, whiten=True)
         self.input_trans = PCA(n_components=self.input_size, whiten=True)
 
-        self.target_trans.fit(target[:, np.newaxis])
+        self.target_trans.fit(target.reshape(-1, self.target_size))
         self.input_trans.fit(input.reshape(-1, self.input_size))
 
     @ensure_args_torch_floats
     def fit(self, target, input, nb_iter=100, lr=1e-1,
-            verbose=True, preprocess=False):
+            verbose=True, preprocess=True):
 
         if preprocess:
             self.init_preprocess(target, input)
@@ -89,7 +98,7 @@ class GPRegressor(gpytorch.models.ExactGP):
         self.model.train().to(self.device)
         self.likelihood.train().to(self.device)
 
-        optimizer = Adam([{'params': self.parameters()}], lr=lr)
+        optimizer = SGD(self.model.parameters(), lr=lr)
         mll = ExactMarginalLogLikelihood(self.likelihood, self.model)
 
         for i in range(nb_iter):

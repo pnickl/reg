@@ -46,9 +46,9 @@ def inverse_transform(arr, trans=None):
             raise NotImplementedError
 
 
-def atleast_2d(arr):
+def atleast_2d(arr, size=1):
     if arr.ndim == 1:
-        return arr.reshape((-1, 1))
+        return arr.reshape((-1, size))
     return arr
 
 

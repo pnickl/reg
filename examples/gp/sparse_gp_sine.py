@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from reg.gp import GPRegressor
+from reg.gp import SparseGPRegressor
 
 
 if __name__ == "__main__":
@@ -13,7 +13,7 @@ if __name__ == "__main__":
     target = np.sin(input * (2 * np.pi)) + np.random.randn(input.shape[0]) * 0.1
 
     # build model
-    model = GPRegressor(input_size=1)
+    model = SparseGPRegressor(input, inducing_size=10)
     model.fit(target, input, preprocess=False)
 
     output = model.predict(input)

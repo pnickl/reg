@@ -1,12 +1,12 @@
 import numpy as np
 
 import torch
-from torch.optim import Adam
+from torch.optim import SGD
 
 import gpytorch
 
 from gpytorch.means import ZeroMean
-from gpytorch.kernels import ScaleKernel, RBFKernel
+from gpytorch.kernels import ScaleKernel, RBFKernel, InducingPointKernel
 from gpytorch.distributions import MultivariateNormal
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.likelihoods import GaussianLikelihood
@@ -19,23 +19,33 @@ from reg.gp.utils import ensure_res_numpy_floats
 from reg.gp.utils import atleast_2d
 
 
-class GPRegressor(gpytorch.models.ExactGP):
+class SparseGPRegressor(gpytorch.models.ExactGP):
 
-    def __init__(self, input_size, device='cpu'):
+    @ensure_args_torch_floats
+    def __init__(self, input, inducing_size, device='cpu'):
         if device == 'gpu' and torch.cuda.is_available():
             self.device = torch.device('cuda:0')
         else:
             self.device = torch.device('cpu')
 
-        self.input_size = input_size
+        if input.ndim == 1:
+            self.input_size = 1
+        else:
+            self.input_size = input.shape[-1]
 
         _likelihood = GaussianLikelihood()
-        super(GPRegressor, self).__init__(train_inputs=None,
-                                          train_targets=None,
-                                          likelihood=_likelihood)
+        super(SparseGPRegressor, self).__init__(train_inputs=None,
+                                                train_targets=None,
+                                                likelihood=_likelihood)
 
         self.mean_module = ZeroMean()
-        self.covar_module = ScaleKernel(RBFKernel())
+        self.base_covar_module = ScaleKernel(RBFKernel())
+
+        inducing_idx = np.random.choice(len(input), inducing_size, replace=False)
+
+        self.covar_module = InducingPointKernel(self.base_covar_module,
+                                                inducing_points=input[inducing_idx, ...],
+                                                likelihood=_likelihood)
 
         self.input_trans = None
         self.target_trans = None
@@ -57,7 +67,7 @@ class GPRegressor(gpytorch.models.ExactGP):
         self.likelihood.eval()
 
         with torch.no_grad():
-            input = transform(input, self.input_trans).to(self.device)
+            input = transform(input, self.input_trans)
             input = atleast_2d(input, self.input_size)
 
             output = self.likelihood(self.model(input)).mean
@@ -89,7 +99,7 @@ class GPRegressor(gpytorch.models.ExactGP):
         self.model.train().to(self.device)
         self.likelihood.train().to(self.device)
 
-        optimizer = Adam([{'params': self.parameters()}], lr=lr)
+        optimizer = SGD(self.model.parameters(), lr=lr)
         mll = ExactMarginalLogLikelihood(self.likelihood, self.model)
 
         for i in range(nb_iter):
