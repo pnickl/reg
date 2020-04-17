@@ -9,7 +9,7 @@ def transform(arr, trans=None):
         return arr
     else:
         if arr.ndim == 1:
-            _size = trans.n_components
+            _size = trans.mean_.shape[0]
             _arr = trans.transform(arr.reshape(-1, _size))
             _arr = np.atleast_1d(np.squeeze(_arr))
         elif arr.ndim == 2:
@@ -30,7 +30,7 @@ def inverse_transform(arr, trans=None):
         return arr
     else:
         if arr.ndim == 1:
-            _size = trans.n_components
+            _size = trans.mean_.shape[0]
             _arr = trans.inverse_transform(arr.reshape(-1, _size))
             _arr = np.atleast_1d(np.squeeze(_arr))
         elif arr.ndim == 2:

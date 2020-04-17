@@ -11,7 +11,11 @@ from gpytorch.distributions import MultivariateNormal
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.likelihoods import GaussianLikelihood
 
-from sklearn.decomposition import PCA
+from gpytorch.settings import max_preconditioner_size
+from gpytorch.settings import max_root_decomposition_size
+from gpytorch.settings import fast_pred_var
+
+from sklearn.preprocessing import StandardScaler
 
 from reg.gp.utils import transform, inverse_transform
 from reg.gp.utils import ensure_args_torch_floats
@@ -47,8 +51,7 @@ class GPRegressor(gpytorch.models.ExactGP):
     def forward(self, input):
         mean = self.mean_module(input)
         covar = self.covar_module(input)
-        output = MultivariateNormal(mean, covar)
-        return output
+        return MultivariateNormal(mean, covar)
 
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
@@ -56,18 +59,19 @@ class GPRegressor(gpytorch.models.ExactGP):
         self.model.eval()
         self.likelihood.eval()
 
-        with torch.no_grad():
-            input = transform(input, self.input_trans).to(self.device)
-            input = atleast_2d(input, self.input_size)
+        with max_preconditioner_size(25), torch.no_grad():
+            with max_root_decomposition_size(30), fast_pred_var():
+                input = transform(input, self.input_trans).to(self.device)
+                input = atleast_2d(input, self.input_size)
 
-            output = self.likelihood(self.model(input)).mean
-            output = inverse_transform(output.cpu(), self.target_trans)
+                output = self.likelihood(self.model(input)).mean
+                output = inverse_transform(output.cpu(), self.target_trans)
 
         return output
 
     def init_preprocess(self, target, input):
-        self.target_trans = PCA(n_components=1, whiten=True)
-        self.input_trans = PCA(n_components=self.input_size, whiten=True)
+        self.target_trans = StandardScaler()
+        self.input_trans = StandardScaler()
 
         self.target_trans.fit(target[:, np.newaxis])
         self.input_trans.fit(input.reshape(-1, self.input_size))

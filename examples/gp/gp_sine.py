@@ -14,7 +14,7 @@ if __name__ == "__main__":
 
     # build model
     model = GPRegressor(input_size=1)
-    model.fit(target, input, preprocess=False)
+    model.fit(target, input, preprocess=True)
 
     output = model.predict(input)
 
