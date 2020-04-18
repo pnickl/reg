@@ -7,9 +7,9 @@ from torch.optim import Adam, SGD
 
 import numpy as np
 
-from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
-from reg.nn.utils import batches
+from reg.nn.utils import batches, atleast_2d
 from reg.gp.utils import transform, inverse_transform
 from reg.gp.utils import ensure_args_torch_floats
 from reg.gp.utils import ensure_res_numpy_floats
@@ -45,33 +45,29 @@ class NNRegressor(nn.Module):
 
     @ensure_args_torch_floats
     def forward(self, inputs):
-        output = self.nonlin(self.l1(inputs.reshape(-1, self.input_size)))
+        output = self.nonlin(self.l1(inputs))
         output = self.nonlin(self.l2(output))
         return torch.squeeze(self.output(output))
 
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
-        input = input.to(self.device)
 
         with torch.no_grad():
-            input = transform(input, self.input_trans)
-            output = self.forward(input)
-            output = inverse_transform(output, self.target_trans)
+            input = transform(input, self.input_trans).to(self.device)
+            input = atleast_2d(input, self.input_size)
 
-            output = output.reshape((self.target_size, ))
+            output = self.forward(input)
+            output = inverse_transform(output.cpu(), self.target_trans)
 
         return output
 
     def init_preprocess(self, target, input):
-        target = np.reshape(target, (-1, self.target_size))
-        input = np.reshape(input, (-1, self.input_size))
+        self.target_trans = StandardScaler()
+        self.input_trans = StandardScaler()
 
-        self.target_trans = PCA(n_components=self.target_size, whiten=True)
-        self.input_trans = PCA(n_components=self.input_size, whiten=True)
-
-        self.target_trans.fit(target)
-        self.input_trans.fit(input)
+        self.target_trans.fit(target.reshape(-1, self.target_size))
+        self.input_trans.fit(input.reshape(-1, self.input_size))
 
     @ensure_args_torch_floats
     def fit(self, target, input, nb_epochs=1000, batch_size=32,
@@ -90,18 +86,18 @@ class NNRegressor(nn.Module):
         for n in range(nb_epochs):
             for batch in batches(batch_size, target.shape[0]):
                 self.optim.zero_grad()
-                _output = self.forward(input[batch])
-                loss = self.criterion(_output.reshape(-1, self.target_size),
-                                      target[batch].reshape(-1, self.target_size))
+                _output = self.forward(atleast_2d(input[batch], self.input_size))
+                loss = self.criterion(atleast_2d(_output, self.target_size),
+                                      atleast_2d(target[batch], self.target_size))
                 loss.backward()
                 self.optim.step()
 
             if verbose:
                 if n % 50 == 0:
-                    output = self.forward(input)
+                    output = self.forward(atleast_2d(input, self.input_size))
                     print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
-                    print("Loss: {:.4f}".format(self.criterion(output.reshape(-1, self.target_size),
-                                                               target.reshape(-1, self.target_size))))
+                    print("Loss: {:.6f}".format(self.criterion(atleast_2d(output, self.target_size),
+                                                               atleast_2d(target, self.target_size))))
 
 
 class DynamicNNRegressor(NNRegressor):
@@ -114,32 +110,29 @@ class DynamicNNRegressor(NNRegressor):
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
-        input = input.to(self.device)
 
         with torch.no_grad():
-            _input = transform(input, self.input_trans)
-            output = self.forward(_input)
-            output = inverse_transform(output, self.target_trans)
+            _input = transform(input, self.input_trans).to(self.device)
+            _input = atleast_2d(_input, self.input_size)
 
-            output = output.reshape((self.target_size, ))
+            output = self.forward(_input)
+            output = inverse_transform(output.cpu(), self.target_trans)
 
         if self.incremental:
-            return (input[:self.target_size] + output).cpu()
+            return input[..., :self.target_size] + output
         else:
-            return output.cpu()
+            return output
 
     def forcast(self, state, exogenous, horizon=1):
+        _state = state
+        forcast = [_state]
+        for h in range(horizon):
+            _exo = exogenous[h, :]
+            _input = np.hstack((_state, _exo))
+            _state = self.predict(_input)
+            forcast.append(_state)
 
-        with torch.no_grad():
-            _state = state
-            forcast = [_state]
-            for h in range(horizon):
-                _exo = exogenous[h, :]
-                _input = np.hstack((_state, _exo))
-                _state = self.predict(_input)
-                forcast.append(_state)
-
-            forcast = np.vstack(forcast)
+        forcast = np.vstack(forcast)
         return forcast
 
     def kstep_mse(self, state, exogenous, horizon):

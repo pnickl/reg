@@ -12,7 +12,7 @@ def transform(arr, trans=None):
         return arr
     else:
         if arr.ndim == 1:
-            _size = trans.n_components
+            _size = trans.mean_.shape[0]
             _arr = trans.transform(arr.reshape(-1, _size))
             _arr = np.atleast_1d(np.squeeze(_arr))
         elif arr.ndim == 2:
@@ -37,7 +37,7 @@ def inverse_transform(arr, trans=None):
         return arr
     else:
         if arr.ndim == 1:
-            _size = trans.n_components
+            _size = trans.mean_.shape[0]
             _arr = trans.inverse_transform(arr.reshape(-1, _size))
             _arr = np.atleast_1d(np.squeeze(_arr))
         elif arr.ndim == 2:
@@ -57,10 +57,19 @@ def inverse_transform(arr, trans=None):
                 return to_double(_arr)
 
 
-def atleast_2d(arr):
+def atleast_2d(arr, size=1):
     if arr.ndim == 1:
-        return arr.reshape((-1, 1))
+        return arr.reshape((-1, size))
     return arr
+
+
+def atleast_3d(arr, size=1):
+    if arr.ndim == 2:
+        return arr.reshape((1, -1, size))
+    elif arr.ndim == 1:
+        return arr.reshape((1, 1, size))
+    else:
+        return arr
 
 
 def to_float(arr):

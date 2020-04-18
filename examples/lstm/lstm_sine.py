@@ -11,7 +11,7 @@ if __name__ == '__main__':
 
     import matplotlib.pyplot as plt
 
-    T, L, N = 20, 250, 10
+    T, L, N = 20, 250, 25
 
     input_size = 1
     target_size = 1
@@ -23,17 +23,18 @@ if __name__ == '__main__':
     input = data[:, :-1].reshape(N, -1, input_size)
     target = data[:, 1:].reshape(N, -1, target_size)
 
-    lstm = LSTMRegressor(input_size,
-                         target_size,
-                         nb_neurons=[10, 10])
+    lstm = LSTMRegressor(input_size=input_size,
+                         target_size=target_size,
+                         hidden_size=24,
+                         nb_layers=2)
 
-    lstm.fit(target, input, nb_epochs=25, preprocess=True)
+    lstm.fit(target, input, nb_epochs=100, preprocess=True)
 
-    horizon, buffer = 200, 10
-    yhat = lstm.forcast(input[0, :buffer, :], horizon=horizon)
+    horizon, buffer = 200, 35
+    yhat = lstm.forcast(input[:, :buffer, :], horizon=horizon)
 
     plt.figure()
-    plt.plot(target[0, buffer:buffer + horizon + 1, :], label='target')
-    plt.plot(yhat, label='prediction')
+    plt.plot(target[5, buffer:buffer + horizon + 1, :], label='target')
+    plt.plot(yhat[5, ...], label='prediction')
     plt.legend()
     plt.show()
