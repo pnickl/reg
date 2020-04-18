@@ -110,8 +110,9 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
 
 
 class DynamicMultiGPRegressor(MultiGPRegressor):
-    def __init__(self, state_size, incremental=True, device='cpu'):
-        super(DynamicMultiGPRegressor, self).__init__(state_size, device)
+    def __init__(self, input_size, target_size, incremental=True, device='cpu'):
+        super(DynamicMultiGPRegressor, self).__init__(input_size,
+                                                      target_size, device)
 
         self.incremental = incremental
 
@@ -123,8 +124,8 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
 
         with max_preconditioner_size(25), torch.no_grad():
             with max_root_decomposition_size(30), fast_pred_var():
-                _input = transform(input, self.input_trans)
-                _input = _input.to(self.device)
+                _input = transform(input, self.input_trans).to(self.device)
+                _input = atleast_2d(_input, self.input_size)
 
                 output = self.likelihood(self.model(_input)).mean
                 output = inverse_transform(output.cpu(), self.target_trans)
