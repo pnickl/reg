@@ -4,9 +4,9 @@ from torch.optim import Adam
 
 import gpytorch
 
-from gpytorch.means import MultitaskMean, ZeroMean, ConstantMean
-from gpytorch.kernels import MultitaskKernel, RBFKernel, ScaleKernel
-from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNormal
+from gpytorch.means import MultitaskMean, ZeroMean
+from gpytorch.kernels import MultitaskKernel, RBFKernel
+from gpytorch.distributions import MultitaskMultivariateNormal
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.likelihoods import MultitaskGaussianLikelihood
 
@@ -22,7 +22,7 @@ from reg.gp.utils import ensure_res_numpy_floats
 from reg.gp.utils import atleast_2d
 
 
-class MultiGPRegressor(gpytorch.models.ExactGP):
+class MultiTaskGPRegressor(gpytorch.models.ExactGP):
 
     def __init__(self, input_size, target_size, device='cpu'):
         if device == 'gpu' and torch.cuda.is_available():
@@ -34,13 +34,12 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
         self.target_size = target_size
 
         _likelihood = MultitaskGaussianLikelihood(num_tasks=self.target_size)
-        super(MultiGPRegressor, self).__init__(train_inputs=None,
-                                               train_targets=None,
-                                               likelihood=_likelihood)
+        super(MultiTaskGPRegressor, self).__init__(train_inputs=None,
+                                                   train_targets=None,
+                                                   likelihood=_likelihood)
 
-        self.mean_module = ConstantMean(batch_shape=torch.Size([self.target_size]))
-        self.covar_module = ScaleKernel(RBFKernel(batch_shape=torch.Size([self.target_size])),
-                                        batch_shape=torch.Size([self.target_size]))
+        self.mean_module = MultitaskMean(ZeroMean(), num_tasks=self.target_size)
+        self.covar_module = MultitaskKernel(RBFKernel(), num_tasks=self.target_size, rank=1)
 
         self.input_trans = None
         self.target_trans = None
@@ -52,7 +51,7 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
     def forward(self, input):
         mean = self.mean_module(input)
         covar = self.covar_module(input)
-        return MultitaskMultivariateNormal.from_batch_mvn(MultivariateNormal(mean, covar))
+        return MultitaskMultivariateNormal(mean, covar)
 
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
@@ -60,7 +59,7 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
         self.model.eval()
         self.likelihood.eval()
 
-        with max_preconditioner_size(25), torch.no_grad():
+        with max_preconditioner_size(10), torch.no_grad():
             with max_root_decomposition_size(30), fast_pred_var():
                 input = transform(input, self.input_trans).to(self.device)
                 input = atleast_2d(input, self.input_size)
@@ -109,10 +108,9 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
                 torch.cuda.empty_cache()
 
 
-class DynamicMultiGPRegressor(MultiGPRegressor):
+class DynamicMultiTaskGPRegressor(MultiTaskGPRegressor):
     def __init__(self, input_size, target_size, incremental=True, device='cpu'):
-        super(DynamicMultiGPRegressor, self).__init__(input_size,
-                                                      target_size, device)
+        super(DynamicMultiTaskGPRegressor, self).__init__(input_size, target_size, device)
 
         self.incremental = incremental
 
@@ -122,13 +120,14 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
         self.model.eval()
         self.likelihood.eval()
 
-        with max_preconditioner_size(25), torch.no_grad():
+        with max_preconditioner_size(10), torch.no_grad():
             with max_root_decomposition_size(30), fast_pred_var():
                 _input = transform(input, self.input_trans).to(self.device)
                 _input = atleast_2d(_input, self.input_size)
 
                 output = self.likelihood(self.model(_input)).mean
                 output = inverse_transform(output.cpu(), self.target_trans)
+                output = output.reshape((self.target_size, ))
 
         if self.incremental:
             return input[..., :self.target_size] + output

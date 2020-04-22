@@ -10,9 +10,9 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 
 from reg.nn.utils import batches, atleast_2d
-from reg.gp.utils import transform, inverse_transform
-from reg.gp.utils import ensure_args_torch_floats
-from reg.gp.utils import ensure_res_numpy_floats
+from reg.nn.utils import transform, inverse_transform
+from reg.nn.utils import ensure_args_torch_floats
+from reg.nn.utils import ensure_res_numpy_floats
 
 
 class NNRegressor(nn.Module):

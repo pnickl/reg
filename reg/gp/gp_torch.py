@@ -59,7 +59,7 @@ class GPRegressor(gpytorch.models.ExactGP):
         self.model.eval()
         self.likelihood.eval()
 
-        with max_preconditioner_size(25), torch.no_grad():
+        with max_preconditioner_size(10), torch.no_grad():
             with max_root_decomposition_size(30), fast_pred_var():
                 input = transform(input, self.input_trans).to(self.device)
                 input = atleast_2d(input, self.input_size)

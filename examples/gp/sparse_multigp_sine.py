@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from reg.gp import SparseMultiGPRegressor
+from reg.gp import SparseGPListRegressor
 
 
 if __name__ == "__main__":
@@ -19,7 +19,7 @@ if __name__ == "__main__":
     target = np.vstack((y1, y2)).T
 
     # build model
-    model = SparseMultiGPRegressor(2, input, 15)
+    model = SparseGPListRegressor(2, input, 15)
     model.fit(target, input, preprocess=True)
 
     output = model.predict(input)

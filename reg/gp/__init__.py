@@ -1,7 +1,10 @@
 from .gp_torch import GPRegressor
+
+from .multitask_gp_torch import MultiTaskGPRegressor
+from .multitask_gp_torch import DynamicMultiTaskGPRegressor
+
+from .gp_list_torch import GPListRegressor
+from .gp_list_torch import DynamicListGPRegressor
+
 from .sparse_gp_torch import SparseGPRegressor
-
-from .multigp_torch import MultiGPRegressor
-from .sparse_multigp_torch import SparseMultiGPRegressor
-
-from .multigp_torch import DynamicMultiGPRegressor
+from .sparse_gp_list_torch import SparseGPListRegressor
