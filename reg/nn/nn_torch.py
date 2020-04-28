@@ -43,6 +43,10 @@ class NNRegressor(nn.Module):
         self.input_trans = None
         self.target_trans = None
 
+    @property
+    def model(self):
+        return self
+
     @ensure_args_torch_floats
     def forward(self, inputs):
         output = self.nonlin(self.l1(inputs))
@@ -52,9 +56,11 @@ class NNRegressor(nn.Module):
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
+        self.device = torch.device('cpu')
+        self.model.to(self.device)
 
         with torch.no_grad():
-            input = transform(input, self.input_trans).to(self.device)
+            input = transform(input, self.input_trans)
             input = atleast_2d(input, self.input_size)
 
             output = self.forward(input)
@@ -110,13 +116,12 @@ class DynamicNNRegressor(NNRegressor):
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
-
         with torch.no_grad():
-            _input = transform(input, self.input_trans).to(self.device)
+            _input = transform(input, self.input_trans)
             _input = atleast_2d(_input, self.input_size)
 
             output = self.forward(_input)
-            output = inverse_transform(output.cpu(), self.target_trans)
+            output = inverse_transform(output, self.target_trans)
 
         if self.incremental:
             return input[..., :self.target_size] + output
@@ -124,6 +129,9 @@ class DynamicNNRegressor(NNRegressor):
             return output
 
     def forcast(self, state, exogenous, horizon=1):
+        self.device = torch.device('cpu')
+        self.model.to(self.device)
+
         _state = state
         forcast = [_state]
         for h in range(horizon):

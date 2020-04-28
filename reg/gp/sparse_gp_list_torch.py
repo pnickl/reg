@@ -50,17 +50,19 @@ class SparseGPListRegressor:
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
-        self.model.eval()
-        self.likelihood.eval()
+        self.device = torch.device('cpu')
+
+        self.model.eval().to(self.device)
+        self.likelihood.eval().to(self.device)
 
         with max_preconditioner_size(10), torch.no_grad():
             with max_root_decomposition_size(30), fast_pred_var():
-                input = transform(input, self.input_trans).to(self.device)
+                input = transform(input, self.input_trans)
                 input = atleast_2d(input, self.input_size)
 
                 _input = [input for _ in range(self.target_size)]
                 predictions = self.likelihood(*self.model(*_input))
-                output = torch.stack([_pred.mean.cpu() for _pred in predictions]).T
+                output = torch.stack([_pred.mean for _pred in predictions]).T
                 output = inverse_transform(output, self.target_trans)
 
         return output

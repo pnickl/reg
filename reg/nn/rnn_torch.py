@@ -42,6 +42,10 @@ class RNNRegressor(nn.Module):
         self.input_trans = None
         self.target_trans = None
 
+    @property
+    def model(self):
+        return self
+
     def init_hidden(self, batch_size):
         return torch.zeros(self.nb_layers, batch_size,
                            self.hidden_size).to(self.device)
@@ -60,7 +64,7 @@ class RNNRegressor(nn.Module):
 
     @ensure_args_torch_floats
     def fit(self, target, input, nb_epochs, lr=1e-3,
-            verbose=True, preprocess=True):
+            l2=1e-32, verbose=True, preprocess=True):
 
         if preprocess:
             self.init_preprocess(target, input)
@@ -70,7 +74,7 @@ class RNNRegressor(nn.Module):
         target = target.to(self.device)
         input = input.to(self.device)
 
-        self.optim = Adam(self.parameters(), lr=lr)
+        self.optim = Adam(self.parameters(), lr=lr, weight_decay=l2)
 
         for n in range(nb_epochs):
             self.optim.zero_grad()
@@ -92,15 +96,14 @@ class RNNRegressor(nn.Module):
     def predict(self, input, hidden):
         with torch.no_grad():
             input = transform(input, self.input_trans)
-            input = input.to(self.device)
-            if hidden is not None:
-                hidden.to(self.device)
-
-            output, hidden = self.forward(input.view(-1, 1, self.input_size), hidden)
-            output = inverse_transform(output.cpu(), self.target_trans)
+            output, hidden = self.forward(input.reshape(-1, 1, self.input_size), hidden)
+            output = inverse_transform(output, self.target_trans)
         return output, hidden
 
     def forcast(self, state, exogenous=None, horizon=1):
+        self.device = torch.device('cpu')
+        self.model.to(self.device)
+
         assert exogenous is None
 
         _hidden = None
@@ -133,6 +136,9 @@ class DynamicRNNRegressor(RNNRegressor):
                                                   nonlinearity, device)
 
     def forcast(self, state, exogenous=None, horizon=1):
+        self.device = torch.device('cpu')
+        self.model.to(self.device)
+
         _hidden = None
 
         if state.ndim < 3:
@@ -152,7 +158,7 @@ class DynamicRNNRegressor(RNNRegressor):
 
         forcast = [_state]
         for h in range(horizon):
-            _exo = exogenous[:, h, :]
+            _exo = exogenous[:, buffer_size + h, :]
             _hist = _state[:, -1, :]
             _input = np.hstack((_hist, _exo))
             _state, _hidden = self.predict(_input, _hidden)

@@ -60,7 +60,7 @@ class LSTMRegressor(nn.Module):
 
     @ensure_args_torch_doubles
     def fit(self, target, input, nb_epochs, lr=0.5,
-            verbose=True, preprocess=True):
+            l2=1e-32, verbose=True, preprocess=True):
 
         if preprocess:
             self.init_preprocess(target, input)
@@ -72,8 +72,8 @@ class LSTMRegressor(nn.Module):
 
         self.model.double()
 
-        self.optim = LBFGS(self.parameters(), lr=lr)
-        # self.optim = Adam(self.parameters(), lr=lr)
+        # self.optim = LBFGS(self.parameters(), lr=lr)
+        self.optim = Adam(self.parameters(), lr=lr, weight_decay=l2)
 
         for n in range(nb_epochs):
 
@@ -88,7 +88,7 @@ class LSTMRegressor(nn.Module):
             self.optim.step(closure)
 
             if verbose:
-                if n % 1 == 0:
+                if n % 50 == 0:
                     output, _ = self.forward(atleast_3d(input, self.input_size))
                     print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
                     print("Loss: {:.6f}".format(self.criterion(atleast_3d(output, self.target_size),
@@ -99,16 +99,14 @@ class LSTMRegressor(nn.Module):
     def predict(self, input, hidden):
         with torch.no_grad():
             input = transform(input, self.input_trans)
-            input = input.to(self.device)
-            if hidden is not None:
-                for _h in hidden:
-                    _h.to(self.device)
-
-            output, hidden = self.forward(input.view(-1, 1, self.input_size), hidden)
-            output = inverse_transform(output.cpu(), self.target_trans)
+            output, hidden = self.forward(input.reshape(-1, 1, self.input_size), hidden)
+            output = inverse_transform(output, self.target_trans)
         return output, list(hidden)
 
     def forcast(self, state, exogenous=None, horizon=1):
+        self.device = torch.device('cpu')
+        self.model.to(self.device)
+
         assert exogenous is None
 
         _hidden = None
@@ -139,6 +137,9 @@ class DynamicLSTMRegressor(LSTMRegressor):
                                                    hidden_size, nb_layers, device)
 
     def forcast(self, state, exogenous=None, horizon=1):
+        self.device = torch.device('cpu')
+        self.model.to(self.device)
+
         _hidden = None
 
         if state.ndim < 3:
@@ -158,7 +159,7 @@ class DynamicLSTMRegressor(LSTMRegressor):
 
         forcast = [_state]
         for h in range(horizon):
-            _exo = exogenous[:, h, :]
+            _exo = exogenous[:, buffer_size + h, :]
             _hist = _state[:, -1, :]
             _input = np.hstack((_hist, _exo))
             _state, _hidden = self.predict(_input, _hidden)
