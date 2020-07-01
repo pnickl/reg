@@ -9,12 +9,12 @@ from torch.optim import Adam
 
 import numpy as np
 
-from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 
-from reg.nn.torch.utils import atleast_2d
 from reg.nn.torch.utils import transform, inverse_transform
 from reg.nn.torch.utils import ensure_args_torch_floats
 from reg.nn.torch.utils import ensure_res_numpy_floats
+from reg.nn.torch.utils import ensure_args_atleast_2d
 
 
 class NNRegressor(nn.Module):
@@ -49,12 +49,10 @@ class NNRegressor(nn.Module):
     def model(self):
         return self
 
-    @ensure_args_torch_floats
     def forward(self, inputs):
-        inputs = inputs.reshape(-1, self.input_size)
         output = self.nonlin(self.l1(inputs))
         output = self.nonlin(self.l2(output))
-        return torch.squeeze(self.output(output))
+        return self.output(output)
 
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
@@ -62,23 +60,24 @@ class NNRegressor(nn.Module):
         self.device = torch.device('cpu')
         self.model.to(self.device)
 
+        input = input.reshape((-1, self.input_size))
+        input = transform(input, self.input_trans)
+
         with torch.no_grad():
-            input = transform(input, self.input_trans)
-            input = atleast_2d(input, self.input_size)
+            output = self.forward(input).cpu()
 
-            output = self.forward(input)
-            output = inverse_transform(output.cpu(), self.target_trans)
-
-        return output
+        output = inverse_transform(output, self.target_trans)
+        return torch.squeeze(output)
 
     def init_preprocess(self, target, input):
-        self.target_trans = StandardScaler()
-        self.input_trans = StandardScaler()
+        self.target_trans = PCA(n_components=self.target_size, whiten=True)
+        self.input_trans = PCA(n_components=self.input_size, whiten=True)
 
-        self.target_trans.fit(target.reshape(-1, self.target_size))
-        self.input_trans.fit(input.reshape(-1, self.input_size))
+        self.target_trans.fit(target)
+        self.input_trans.fit(input)
 
     @ensure_args_torch_floats
+    @ensure_args_atleast_2d
     def fit(self, target, input, nb_epochs=1000, batch_size=32,
             lr=1e-3, l2=1e-32, verbose=True, preprocess=True):
 
@@ -100,18 +99,16 @@ class NNRegressor(nn.Module):
 
             for batch in batches:
                 self.optim.zero_grad()
-                _output = self.forward(atleast_2d(input[batch], self.input_size))
-                loss = self.criterion(atleast_2d(_output, self.target_size),
-                                      atleast_2d(target[batch], self.target_size))
+                _output = self.forward(input[batch])
+                loss = self.criterion(_output, target[batch])
                 loss.backward()
                 self.optim.step()
 
             if verbose:
                 if n % 50 == 0:
-                    output = self.forward(atleast_2d(input, self.input_size))
+                    output = self.forward(input)
                     print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
-                    print("Loss: {:.6f}".format(self.criterion(atleast_2d(output, self.target_size),
-                                                               atleast_2d(target, self.target_size))))
+                    print("Loss: {:.6f}".format(self.criterion(output, target)))
 
 
 class DynamicNNRegressor(NNRegressor):
@@ -124,12 +121,13 @@ class DynamicNNRegressor(NNRegressor):
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
-        with torch.no_grad():
-            _input = transform(input, self.input_trans)
-            _input = atleast_2d(_input, self.input_size)
+        input = input.reshape((-1, self.input_size))
+        input = transform(input, self.input_trans)
 
-            output = self.forward(_input)
-            output = inverse_transform(output, self.target_trans)
+        with torch.no_grad():
+                output = self.forward(input)
+
+        output = inverse_transform(output, self.target_trans)
 
         if self.incremental:
             return input[..., :self.target_size] + output

@@ -4,12 +4,12 @@ from torch.optim import Adam
 
 import numpy as np
 
-from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 
-from reg.nn.torch.utils import transform, inverse_transform
+from reg.nn.torch.utils import transform, inverse_transform, atleast_3d
 from reg.nn.torch.utils import ensure_args_torch_floats
 from reg.nn.torch.utils import ensure_res_numpy_floats
-from reg.nn.torch.utils import atleast_2d, atleast_3d
+from reg.nn.torch.utils import ensure_args_atleast_3d
 
 
 class RNNRegressor(nn.Module):
@@ -56,13 +56,14 @@ class RNNRegressor(nn.Module):
         return output, hidden
 
     def init_preprocess(self, target, input):
-        self.target_trans = StandardScaler()
-        self.input_trans = StandardScaler()
+        self.target_trans = PCA(n_components=self.target_size, whiten=True)
+        self.input_trans = PCA(n_components=self.input_size, whiten=True)
 
         self.target_trans.fit(target.reshape(-1, self.target_size))
         self.input_trans.fit(input.reshape(-1, self.input_size))
 
     @ensure_args_torch_floats
+    @ensure_args_atleast_3d
     def fit(self, target, input, nb_epochs, lr=1e-3,
             l2=1e-32, verbose=True, preprocess=True):
 
@@ -78,26 +79,27 @@ class RNNRegressor(nn.Module):
 
         for n in range(nb_epochs):
             self.optim.zero_grad()
-            _output, hidden = self(atleast_3d(input, self.input_size))
-            loss = self.criterion(atleast_3d(_output, self.target_size),
-                                  atleast_3d(target, self.target_size))
+            _output, hidden = self.model(input)
+            loss = self.criterion(_output, target)
             loss.backward()
             self.optim.step()
 
             if verbose:
                 if n % 50 == 0:
-                    output, _ = self.forward(atleast_3d(input, self.input_size))
+                    output, _ = self.forward(input)
                     print('Epoch: {}/{}.............'.format(n, nb_epochs), end=' ')
-                    print("Loss: {:.6f}".format(self.criterion(atleast_3d(output, self.target_size),
-                                                               atleast_3d(target, self.target_size))))
+                    print("Loss: {:.6f}".format(self.criterion(output, target)))
 
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input, hidden):
+        input = input.reshape(-1, 1, self.input_size)
+        input = transform(input, self.input_trans)
+
         with torch.no_grad():
-            input = transform(input, self.input_trans)
-            output, hidden = self.forward(input.reshape(-1, 1, self.input_size), hidden)
-            output = inverse_transform(output, self.target_trans)
+            output, hidden = self.forward(input, hidden)
+
+        output = inverse_transform(output, self.target_trans)
         return output, hidden
 
     def forcast(self, state, exogenous=None, horizon=1):

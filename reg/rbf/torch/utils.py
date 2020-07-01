@@ -71,12 +71,17 @@ def ensure_res_numpy_floats(f):
     def wrapper(self, *args, **kwargs):
         outputs = f(self, *args, **kwargs)
 
-        _outputs = []
-        for out in outputs:
-            if isinstance(out, torch.Tensor):
-                _outputs.append(np_float(out))
-            elif isinstance(out, list):
-                _outputs.append([np_float(x) for x in out])
+        if isinstance(outputs, torch.Tensor):
+            _outputs = np_float(outputs)
+        elif isinstance(outputs, tuple):
+            _outputs = []
+            for out in outputs:
+                if isinstance(out, torch.Tensor):
+                    _outputs.append(np_float(out))
+                elif isinstance(out, list):
+                    _outputs.append([np_float(x) for x in out])
+        else:
+            raise NotImplementedError
 
         return _outputs
     return wrapper
@@ -89,8 +94,7 @@ def ensure_args_atleast_2d(f):
         for arg in args:
             if isinstance(arg, list):
                 _args.append([atleast_2d(_arr) for _arr in arg])
-            elif isinstance(arg, np.ndarray)\
-                    or isinstance(arg, torch.Tensor):
+            elif isinstance(arg, (np.ndarray, torch.Tensor)):
                 _args.append(atleast_2d(arg))
             else:
                 _args.append(arg)
