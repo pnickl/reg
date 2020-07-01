@@ -1,7 +1,7 @@
 import autograd.numpy as np
 
-from reg.nn.nn_ag import NNRegressor as agNetwork
-from reg.nn.nn_npy import NNRegressor as npNetwork
+from reg.nn.npy.nn_ag import NNRegressor as agNetwork
+from reg.nn.npy.nn_npy import NNRegressor as npNetwork
 
 
 if __name__ == '__main__':

@@ -1,9 +1,9 @@
 import autograd.numpy as np
 import torch
 
-from reg.nn.nn_ag import NNRegressor as agNetwork
-from reg.nn.nn_torch import NNRegressor as torchNetwork
-from reg.nn.nn_npy import NNRegressor as npNetwork
+from reg.nn.npy.nn_ag import NNRegressor as agNetwork
+from reg.nn.torch.nn_torch import NNRegressor as torchNetwork
+from reg.nn.npy.nn_npy import NNRegressor as npNetwork
 
 to_float = lambda arr: torch.from_numpy(arr).float()
 

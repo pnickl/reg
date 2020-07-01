@@ -1,14 +1,14 @@
 import torch
 import torch.nn as nn
-from torch.optim import LBFGS, Adam
+from torch.optim import LBFGS
 
 import numpy as np
 
 from sklearn.decomposition import PCA
 
-from reg.nn.utils import transform, inverse_transform
-from reg.nn.utils import ensure_args_torch_doubles
-from reg.nn.utils import ensure_res_numpy_floats
+from reg.nn.torch.utils import transform, inverse_transform
+from reg.nn.torch.utils import ensure_args_torch_doubles
+from reg.nn.torch.utils import ensure_res_numpy_floats
 
 
 class LSTMRegressor(nn.Module):

@@ -6,9 +6,9 @@ import numpy as np
 
 from sklearn.decomposition import PCA
 
-from reg.nn.utils import transform, inverse_transform
-from reg.nn.utils import ensure_args_torch_floats
-from reg.nn.utils import ensure_res_numpy_floats
+from reg.nn.torch.utils import transform, inverse_transform
+from reg.nn.torch.utils import ensure_args_torch_floats
+from reg.nn.torch.utils import ensure_res_numpy_floats
 
 
 class RNNRegressor(nn.Module):

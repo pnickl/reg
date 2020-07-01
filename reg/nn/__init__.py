@@ -1,8 +1,8 @@
-from .nn_torch import NNRegressor
-from .nn_torch import DynamicNNRegressor
+from .torch.nn_torch import NNRegressor
+from .torch.nn_torch import DynamicNNRegressor
 
-from .rnn_torch import RNNRegressor
-from .rnn_torch import DynamicRNNRegressor
+from .torch.rnn_torch import RNNRegressor
+from .torch.rnn_torch import DynamicRNNRegressor
 
-from .lstm_torch import LSTMRegressor
-from .lstm_torch import DynamicLSTMRegressor
+from .torch.lstm_torch import LSTMRegressor
+from .torch.lstm_torch import DynamicLSTMRegressor

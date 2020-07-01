@@ -3,16 +3,16 @@ import torch.nn as nn
 import torch.nn.functional as func
 
 from torch.nn.modules.loss import MSELoss
-from torch.optim import Adam, SGD
+from torch.optim import Adam
 
 import numpy as np
 
 from sklearn.decomposition import PCA
 
-from reg.nn.utils import batches
-from reg.gp.utils import transform, inverse_transform
-from reg.gp.utils import ensure_args_torch_floats
-from reg.gp.utils import ensure_res_numpy_floats
+from reg.nn.torch.utils import batches
+from reg.nn.torch.utils import transform, inverse_transform
+from reg.nn.torch.utils import ensure_args_torch_floats
+from reg.nn.torch.utils import ensure_res_numpy_floats
 
 
 class NNRegressor(nn.Module):
@@ -45,7 +45,8 @@ class NNRegressor(nn.Module):
 
     @ensure_args_torch_floats
     def forward(self, inputs):
-        output = self.nonlin(self.l1(inputs.reshape(-1, self.input_size)))
+        inputs = inputs.reshape(-1, self.input_size)
+        output = self.nonlin(self.l1(inputs))
         output = self.nonlin(self.l2(output))
         return torch.squeeze(self.output(output))
 

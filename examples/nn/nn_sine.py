@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from reg.nn.nn_torch import NNRegressor
+from reg.nn.torch.nn_torch import NNRegressor
 
 
 if __name__ == "__main__":

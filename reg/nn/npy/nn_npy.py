@@ -1,11 +1,10 @@
 import autograd.numpy as np
 import autograd.numpy.random as npr
 
-from autograd import grad
-from autograd.misc.optimizers import sgd, adam
+from autograd.misc.optimizers import adam
 
-from reg.nn.utils import logistic, relu, linear, tanh
-from reg.nn.utils import mse, ce
+from reg.nn.torch.utils import logistic, relu, linear, tanh
+from reg.nn.torch.utils import mse, ce
 
 
 class Layer:

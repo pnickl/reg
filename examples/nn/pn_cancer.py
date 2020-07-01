@@ -1,4 +1,4 @@
-from reg.nn.pn_npy import Perceptron
+from reg.nn.npy.pn_npy import Perceptron
 
 
 if __name__ == '__main__':
