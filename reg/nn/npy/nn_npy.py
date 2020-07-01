@@ -3,8 +3,8 @@ import autograd.numpy.random as npr
 
 from autograd.misc.optimizers import adam
 
-from reg.nn.torch.utils import logistic, relu, linear, tanh
-from reg.nn.torch.utils import mse, ce
+from reg.nn.npy.utils import logistic, relu, linear, tanh
+from reg.nn.npy.utils import mse, ce
 
 
 class Layer:
