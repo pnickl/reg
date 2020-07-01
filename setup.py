@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# @Filename: setup.py
-# @Date: 2019-06-16-21-53
-# @Author: Hany Abdulsamad
-# @Contact: hany@robot-learning.de
-
 from setuptools import setup
 
 setup(name='reg',
@@ -12,7 +5,9 @@ setup(name='reg',
       description='Regression',
       author='Hany Abdulsamad',
       author_email='hany@robot-learning.de',
-      install_requires=['numpy', 'scipy', 'matplotlib'],
+      install_requires=['numpy', 'scipy', 'matplotlib',
+                        'torch', 'sklearn', 'autograd',
+                        'mimo'],
       packages=['reg'],
       zip_safe=False,
 )
