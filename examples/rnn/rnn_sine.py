@@ -11,7 +11,7 @@ if __name__ == '__main__':
 
     import matplotlib.pyplot as plt
 
-    T, L, N = 20, 250, 10
+    T, L, N = 20, 250, 25
 
     input_size = 1
     target_size = 1
@@ -25,15 +25,16 @@ if __name__ == '__main__':
 
     rnn = RNNRegressor(input_size=input_size,
                        target_size=target_size,
-                       hidden_size=25,
-                       nb_layers=1)
+                       hidden_size=24,
+                       nb_layers=2)
 
-    rnn.fit(target, input, nb_epochs=2500, lr=1e-3, preprocess=True)
+    rnn.fit(target, input, nb_epochs=5000, lr=1e-3, preprocess=True)
 
-    horizon, buffer = 200, 10
-    yhat = rnn.forcast(input[0, :buffer, :], horizon=horizon)
+    horizon, buffer = 200, 35
+    yhat = rnn.forcast(input[:, :buffer, :], horizon=horizon)
 
-    plt.plot(target[0, buffer:buffer + horizon + 1, :], label='target')
-    plt.plot(yhat, label='prediction')
+    plt.figure()
+    plt.plot(target[3, buffer:buffer + horizon + 1, :], label='target')
+    plt.plot(yhat[3, ...], label='prediction')
     plt.legend()
     plt.show()

@@ -4,8 +4,8 @@ from torch.optim import Adam
 
 import gpytorch
 
-from gpytorch.means import MultitaskMean, ZeroMean, ConstantMean
-from gpytorch.kernels import MultitaskKernel, RBFKernel, ScaleKernel
+from gpytorch.means import ConstantMean
+from gpytorch.kernels import RBFKernel, ScaleKernel
 from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNormal
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.likelihoods import MultitaskGaussianLikelihood
@@ -22,7 +22,7 @@ from reg.gp.utils import ensure_res_numpy_floats
 from reg.gp.utils import atleast_2d
 
 
-class MultiGPRegressor(gpytorch.models.ExactGP):
+class GPListRegressor(gpytorch.models.ExactGP):
 
     def __init__(self, input_size, target_size, device='cpu'):
         if device == 'gpu' and torch.cuda.is_available():
@@ -34,9 +34,9 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
         self.target_size = target_size
 
         _likelihood = MultitaskGaussianLikelihood(num_tasks=self.target_size)
-        super(MultiGPRegressor, self).__init__(train_inputs=None,
-                                               train_targets=None,
-                                               likelihood=_likelihood)
+        super(GPListRegressor, self).__init__(train_inputs=None,
+                                              train_targets=None,
+                                              likelihood=_likelihood)
 
         self.mean_module = ConstantMean(batch_shape=torch.Size([self.target_size]))
         self.covar_module = ScaleKernel(RBFKernel(batch_shape=torch.Size([self.target_size])),
@@ -57,16 +57,18 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
-        self.model.eval()
-        self.likelihood.eval()
+        self.device = torch.device('cpu')
 
-        with max_preconditioner_size(25), torch.no_grad():
+        self.model.eval().to(self.device)
+        self.likelihood.eval().to(self.device)
+
+        with max_preconditioner_size(10), torch.no_grad():
             with max_root_decomposition_size(30), fast_pred_var():
-                input = transform(input, self.input_trans).to(self.device)
+                input = transform(input, self.input_trans)
                 input = atleast_2d(input, self.input_size)
 
                 output = self.likelihood(self.model(input)).mean
-                output = inverse_transform(output.cpu(), self.target_trans)
+                output = inverse_transform(output, self.target_trans)
 
         return output
 
@@ -109,26 +111,23 @@ class MultiGPRegressor(gpytorch.models.ExactGP):
                 torch.cuda.empty_cache()
 
 
-class DynamicMultiGPRegressor(MultiGPRegressor):
+class DynamicListGPRegressor(GPListRegressor):
     def __init__(self, input_size, target_size, incremental=True, device='cpu'):
-        super(DynamicMultiGPRegressor, self).__init__(input_size,
-                                                      target_size, device)
+        super(DynamicListGPRegressor, self).__init__(input_size, target_size, device)
 
         self.incremental = incremental
 
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
-        self.model.eval()
-        self.likelihood.eval()
-
-        with max_preconditioner_size(25), torch.no_grad():
+        with max_preconditioner_size(10), torch.no_grad():
             with max_root_decomposition_size(30), fast_pred_var():
                 _input = transform(input, self.input_trans).to(self.device)
                 _input = atleast_2d(_input, self.input_size)
 
                 output = self.likelihood(self.model(_input)).mean
-                output = inverse_transform(output.cpu(), self.target_trans)
+                output = inverse_transform(output, self.target_trans)
+                output = output.reshape((self.target_size, ))
 
         if self.incremental:
             return input[..., :self.target_size] + output
@@ -136,6 +135,11 @@ class DynamicMultiGPRegressor(MultiGPRegressor):
             return output
 
     def forcast(self, state, exogenous, horizon=1):
+        self.device = torch.device('cpu')
+
+        self.model.eval().to(self.device)
+        self.likelihood.eval().to(self.device)
+
         _state = state
         forcast = [_state]
         for h in range(horizon):

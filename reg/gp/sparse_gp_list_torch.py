@@ -2,13 +2,8 @@ import numpy as np
 import torch
 from torch.optim import Adam
 
-import gpytorch
+from reg.gp import SparseGPRegressor
 
-from gpytorch.means import MultitaskMean, ZeroMean, ConstantMean
-from gpytorch.kernels import MultitaskKernel, RBFKernel, ScaleKernel, InducingPointKernel
-from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNormal
-from gpytorch.mlls import ExactMarginalLogLikelihood
-from gpytorch.likelihoods import MultitaskGaussianLikelihood
 from gpytorch.mlls import SumMarginalLogLikelihood
 
 from gpytorch.settings import max_preconditioner_size
@@ -20,15 +15,13 @@ from gpytorch.likelihoods import LikelihoodList
 
 from sklearn.preprocessing import StandardScaler
 
-from reg.gp import SparseGPRegressor
-
 from reg.gp.utils import transform, inverse_transform
 from reg.gp.utils import ensure_args_torch_floats
 from reg.gp.utils import ensure_res_numpy_floats
 from reg.gp.utils import atleast_2d
 
 
-class SparseMultiGPRegressor:
+class SparseGPListRegressor:
 
     @ensure_args_torch_floats
     def __init__(self, target_size, input, inducing_size, device='cpu'):
@@ -57,17 +50,19 @@ class SparseMultiGPRegressor:
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
-        self.model.eval()
-        self.likelihood.eval()
+        self.device = torch.device('cpu')
 
-        with max_preconditioner_size(25), torch.no_grad():
+        self.model.eval().to(self.device)
+        self.likelihood.eval().to(self.device)
+
+        with max_preconditioner_size(10), torch.no_grad():
             with max_root_decomposition_size(30), fast_pred_var():
-                input = transform(input, self.input_trans).to(self.device)
+                input = transform(input, self.input_trans)
                 input = atleast_2d(input, self.input_size)
 
                 _input = [input for _ in range(self.target_size)]
                 predictions = self.likelihood(*self.model(*_input))
-                output = torch.stack([_pred.mean.cpu() for _pred in predictions]).T
+                output = torch.stack([_pred.mean for _pred in predictions]).T
                 output = inverse_transform(output, self.target_trans)
 
         return output

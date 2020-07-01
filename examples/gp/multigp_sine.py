@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from reg.gp import MultiGPRegressor
+from reg.gp import GPListRegressor
 
 
 if __name__ == "__main__":
@@ -19,7 +19,7 @@ if __name__ == "__main__":
     target = np.vstack((y1, y2)).T
 
     # build model
-    model = MultiGPRegressor(input_size=2, target_size=2)
+    model = GPListRegressor(input_size=2, target_size=2)
     model.fit(target, input, preprocess=True)
 
     output = model.predict(input)

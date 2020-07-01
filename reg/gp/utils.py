@@ -19,10 +19,11 @@ def transform(arr, trans=None):
 
         if isinstance(arr, np.ndarray):
             return _arr
-        elif isinstance(arr, torch.FloatTensor):
-            return to_float(_arr)
         else:
-            raise NotImplementedError
+            if isinstance(arr, torch.FloatTensor):
+                return to_float(_arr)
+            else:
+                return to_double(_arr)
 
 
 def inverse_transform(arr, trans=None):
@@ -40,10 +41,11 @@ def inverse_transform(arr, trans=None):
 
         if isinstance(arr, np.ndarray):
             return _arr
-        elif isinstance(arr, torch.FloatTensor):
-            return to_float(_arr)
         else:
-            raise NotImplementedError
+            if isinstance(arr, torch.FloatTensor):
+                return to_float(_arr)
+            else:
+                return to_double(_arr)
 
 
 def atleast_2d(arr, size=1):
@@ -55,7 +57,7 @@ def atleast_2d(arr, size=1):
 def to_float(arr):
     if isinstance(arr, np.ndarray):
         return torch.from_numpy(arr).float()
-    elif isinstance(arr, torch.Tensor):
+    elif isinstance(arr, torch.FloatTensor):
         return arr
     else:
         pass
@@ -64,7 +66,7 @@ def to_float(arr):
 def to_double(arr):
     if isinstance(arr, np.ndarray):
         return torch.from_numpy(arr).double()
-    elif isinstance(arr, torch.Tensor):
+    elif isinstance(arr, torch.DoubleTensor):
         return arr
     else:
         pass
@@ -88,6 +90,22 @@ def ensure_args_torch_floats(f):
                 _args.append([to_float(_arr) for _arr in arg])
             elif isinstance(arg, np.ndarray):
                 _args.append(to_float(arg))
+            else:
+                _args.append(arg)
+
+        return f(self, *_args, **kwargs)
+    return wrapper
+
+
+def ensure_args_torch_doubles(f):
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+        _args = []
+        for arg in args:
+            if isinstance(arg, list):
+                _args.append([to_double(_arr) for _arr in arg])
+            elif isinstance(arg, np.ndarray):
+                _args.append(to_double(arg))
             else:
                 _args.append(arg)
 
