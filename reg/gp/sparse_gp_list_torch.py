@@ -18,7 +18,7 @@ from sklearn.preprocessing import StandardScaler
 from reg.gp.utils import transform, inverse_transform
 from reg.gp.utils import ensure_args_torch_floats
 from reg.gp.utils import ensure_res_numpy_floats
-from reg.gp.utils import atleast_2d
+from reg.gp.utils import ensure_args_atleast_2d
 
 
 class SparseGPListRegressor:
@@ -55,26 +55,26 @@ class SparseGPListRegressor:
         self.model.eval().to(self.device)
         self.likelihood.eval().to(self.device)
 
+        input = transform(input.reshape((-1, self.input_size)), self.input_trans)
+
         with max_preconditioner_size(10), torch.no_grad():
             with max_root_decomposition_size(30), fast_pred_var():
-                input = transform(input, self.input_trans)
-                input = atleast_2d(input, self.input_size)
-
                 _input = [input for _ in range(self.target_size)]
                 predictions = self.likelihood(*self.model(*_input))
                 output = torch.stack([_pred.mean for _pred in predictions]).T
-                output = inverse_transform(output, self.target_trans)
 
+        output = inverse_transform(output, self.target_trans).squeeze()
         return output
 
     def init_preprocess(self, target, input):
         self.target_trans = StandardScaler()
         self.input_trans = StandardScaler()
 
-        self.target_trans.fit(target.reshape(-1, self.target_size))
-        self.input_trans.fit(input.reshape(-1, self.input_size))
+        self.target_trans.fit(target)
+        self.input_trans.fit(input)
 
     @ensure_args_torch_floats
+    @ensure_args_atleast_2d
     def fit(self, target, input, nb_iter=100, lr=1e-1,
             verbose=True, preprocess=True):
 

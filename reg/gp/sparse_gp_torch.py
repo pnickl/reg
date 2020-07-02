@@ -20,7 +20,6 @@ from sklearn.preprocessing import StandardScaler
 from reg.gp.utils import transform, inverse_transform
 from reg.gp.utils import ensure_args_torch_floats
 from reg.gp.utils import ensure_res_numpy_floats
-from reg.gp.utils import atleast_2d
 
 
 class SparseGPRegressor(gpytorch.models.ExactGP):
@@ -72,30 +71,32 @@ class SparseGPRegressor(gpytorch.models.ExactGP):
         self.model.eval().to(self.device)
         self.likelihood.eval().to(self.device)
 
+        input = transform(input.reshape((-1, self.input_size)), self.input_trans)
+
         with max_preconditioner_size(10), torch.no_grad():
             with max_root_decomposition_size(30), fast_pred_var():
-                input = transform(input, self.input_trans)
-                input = atleast_2d(input, self.input_size)
-
                 output = self.likelihood(self.model(input)).mean
-                output = inverse_transform(output, self.target_trans)
 
+        output = inverse_transform(output, self.target_trans).squeeze()
         return output
 
     def init_preprocess(self, target, input):
         self.target_trans = StandardScaler()
         self.input_trans = StandardScaler()
 
-        self.target_trans.fit(target[:, np.newaxis])
-        self.input_trans.fit(input.reshape(-1, self.input_size))
+        self.target_trans.fit(target[:, None])
+        self.input_trans.fit(input)
 
     @ensure_args_torch_floats
     def fit(self, target, input, nb_iter=100, lr=1e-1,
             verbose=True, preprocess=False):
 
+        if input.ndim == 1:
+            input = input.reshape(-1, self.input_size)
+
         if preprocess:
             self.init_preprocess(target, input)
-            target = transform(target, self.target_trans)
+            target = np.squeeze(transform(target[:, None], self.target_trans))
             input = transform(input, self.input_trans)
 
             # update inducing points

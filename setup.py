@@ -7,7 +7,7 @@ setup(name='reg',
       author_email='hany@robot-learning.de',
       install_requires=['numpy', 'scipy', 'matplotlib',
                         'torch', 'sklearn', 'autograd',
-                        'mimo'],
+                        'mimo', 'gpytorch'],
       packages=['reg'],
       zip_safe=False,
 )

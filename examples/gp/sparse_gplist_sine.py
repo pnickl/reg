@@ -1,4 +1,6 @@
 import numpy as np
+import numpy.random as npr
+
 import matplotlib.pyplot as plt
 
 from reg.gp import SparseGPListRegressor
@@ -10,10 +12,10 @@ if __name__ == "__main__":
 
     # data
     x1 = np.linspace(0, 1, 50)
-    y1 = 1.5 * np.sin(x1 * (2 * np.pi)) + np.random.randn(x1.shape[0]) * 0.1
+    y1 = 1.5 * np.sin(x1 * (2 * np.pi)) + npr.randn(x1.shape[0]) * 0.1
 
     x2 = 2. * np.linspace(0, 1, 50)
-    y2 = 2. * np.sin(x2 * 2 * (2 * np.pi)) + np.random.randn(x2.shape[0]) * 0.1
+    y2 = 2. * np.sin(x2 * 2 * (2 * np.pi)) + npr.randn(x2.shape[0]) * 0.1
 
     input = np.vstack((x1, x2)).T
     target = np.vstack((y1, y2)).T

@@ -1,4 +1,6 @@
 import numpy as np
+import numpy.random as npr
+
 import matplotlib.pyplot as plt
 
 from reg.gp import SparseGPRegressor
@@ -10,7 +12,7 @@ if __name__ == "__main__":
 
     # data
     input = np.linspace(0, 1, 50)
-    target = np.sin(input * (2 * np.pi)) + np.random.randn(input.shape[0]) * 0.1
+    target = np.sin(input * (2 * np.pi)) + npr.randn(input.shape[0]) * 0.1
 
     # build model
     model = SparseGPRegressor(input, inducing_size=10)

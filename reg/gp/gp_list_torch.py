@@ -19,7 +19,7 @@ from sklearn.preprocessing import StandardScaler
 from reg.gp.utils import transform, inverse_transform
 from reg.gp.utils import ensure_args_torch_floats
 from reg.gp.utils import ensure_res_numpy_floats
-from reg.gp.utils import atleast_2d
+from reg.rbf.torch.utils import ensure_args_atleast_2d
 
 
 class GPListRegressor(gpytorch.models.ExactGP):
@@ -62,24 +62,24 @@ class GPListRegressor(gpytorch.models.ExactGP):
         self.model.eval().to(self.device)
         self.likelihood.eval().to(self.device)
 
+        input = transform(input.reshape((-1, self.input_size)), self.input_trans)
+
         with max_preconditioner_size(10), torch.no_grad():
             with max_root_decomposition_size(30), fast_pred_var():
-                input = transform(input, self.input_trans)
-                input = atleast_2d(input, self.input_size)
-
                 output = self.likelihood(self.model(input)).mean
-                output = inverse_transform(output, self.target_trans)
 
+        output = inverse_transform(output, self.target_trans).squeeze()
         return output
 
     def init_preprocess(self, target, input):
         self.target_trans = StandardScaler()
         self.input_trans = StandardScaler()
 
-        self.target_trans.fit(target.reshape(-1, self.target_size))
-        self.input_trans.fit(input.reshape(-1, self.input_size))
+        self.target_trans.fit(target)
+        self.input_trans.fit(input)
 
     @ensure_args_torch_floats
+    @ensure_args_atleast_2d
     def fit(self, target, input, nb_iter=100, lr=1e-1,
             verbose=True, preprocess=True):
 
@@ -120,15 +120,13 @@ class DynamicListGPRegressor(GPListRegressor):
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
+        input = transform(input.reshape((-1, self.input_size)), self.input_trans)
+
         with max_preconditioner_size(10), torch.no_grad():
             with max_root_decomposition_size(30), fast_pred_var():
-                _input = transform(input, self.input_trans).to(self.device)
-                _input = atleast_2d(_input, self.input_size)
+                output = self.likelihood(self.model(input)).mean
 
-                output = self.likelihood(self.model(_input)).mean
-                output = inverse_transform(output, self.target_trans)
-                output = output.reshape((self.target_size, ))
-
+        output = inverse_transform(output, self.target_trans).squeeze()
         if self.incremental:
             return input[..., :self.target_size] + output
         else:
