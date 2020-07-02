@@ -11,7 +11,7 @@ def transform(arr, trans=None):
         _arr = trans.transform(arr)
         if isinstance(arr, np.ndarray):
             return _arr
-        else:
+        elif isinstance(arr, torch.FloatTensor):
             return to_float(_arr)
 
 
@@ -22,7 +22,7 @@ def inverse_transform(arr, trans=None):
         _arr = trans.inverse_transform(arr)
         if isinstance(arr, np.ndarray):
             return _arr
-        else:
+        elif isinstance(arr, torch.FloatTensor):
             return to_float(_arr)
 
 

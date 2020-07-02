@@ -89,14 +89,14 @@ class SparseGPRegressor(gpytorch.models.ExactGP):
 
     @ensure_args_torch_floats
     def fit(self, target, input, nb_iter=100, lr=1e-1,
-            verbose=True, preprocess=False):
+            verbose=True, preprocess=True):
 
         if input.ndim == 1:
             input = input.reshape(-1, self.input_size)
 
         if preprocess:
             self.init_preprocess(target, input)
-            target = np.squeeze(transform(target[:, None], self.target_trans))
+            target = transform(target[:, None], self.target_trans).squeeze()
             input = transform(input, self.input_trans)
 
             # update inducing points

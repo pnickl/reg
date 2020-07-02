@@ -126,7 +126,7 @@ class DynamicListGPRegressor(GPListRegressor):
             with max_root_decomposition_size(30), fast_pred_var():
                 output = self.likelihood(self.model(input)).mean
 
-        output = inverse_transform(output, self.target_trans).squeeze()
+        output = inverse_transform(output, self.target_trans)
         if self.incremental:
             return input[..., :self.target_size] + output
         else:

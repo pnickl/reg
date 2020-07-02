@@ -5,7 +5,7 @@ from numpy.random import multivariate_normal as mvn
 from mimo.distributions import MatrixNormalWishart
 from mimo.distributions import LinearGaussianWithMatrixNormalWishart
 
-from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 from reg.rbf.npy.utils import transform, inverse_transform
 from reg.rbf.npy.utils import ensure_args_atleast_2d
@@ -61,18 +61,17 @@ class BayesianFourierRegressor:
         return self.basis.fit_transform(input)
 
     def predict(self, input):
-        input = input.reshape((-1, self.input_size))
-        input = transform(input, self.input_trans)
+        input = transform(input.reshape((-1, self.input_size)), self.input_trans)
 
         feat = self.features(input)
         output, _, _ = self.model.posterior_predictive_gaussian(np.squeeze(feat))
 
-        output = inverse_transform(output, self.target_trans)
-        return np.squeeze(output)
+        output = inverse_transform(output, self.target_trans).squeeze()
+        return output
 
     def init_preprocess(self, target, input):
-        self.target_trans = PCA(n_components=self.target_size, whiten=True)
-        self.input_trans = PCA(n_components=self.input_size, whiten=True)
+        self.target_trans = StandardScaler()
+        self.input_trans = StandardScaler()
 
         self.target_trans.fit(target)
         self.input_trans.fit(input)

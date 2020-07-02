@@ -4,7 +4,7 @@ from torch.optim import Adam, LBFGS
 
 import numpy as np
 
-from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 from reg.nn.torch.utils import transform, inverse_transform, atleast_3d
 from reg.nn.torch.utils import ensure_args_torch_doubles
@@ -52,8 +52,8 @@ class LSTMRegressor(nn.Module):
         return output, hidden
 
     def init_preprocess(self, target, input):
-        self.target_trans = PCA(n_components=self.target_size, whiten=True)
-        self.input_trans = PCA(n_components=self.input_size, whiten=True)
+        self.target_trans = StandardScaler()
+        self.input_trans = StandardScaler()
 
         self.target_trans.fit(target.reshape(-1, self.target_size))
         self.input_trans.fit(input.reshape(-1, self.input_size))
@@ -96,8 +96,7 @@ class LSTMRegressor(nn.Module):
     @ensure_args_torch_doubles
     @ensure_res_numpy_floats
     def predict(self, input, hidden):
-        input = input.reshape(-1, 1, self.input_size)
-        input = transform(input, self.input_trans)
+        input = transform(input.reshape(-1, 1, self.input_size), self.input_trans)
 
         with torch.no_grad():
             output, hidden = self.forward(input, hidden)

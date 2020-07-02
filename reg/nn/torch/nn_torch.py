@@ -9,7 +9,7 @@ from torch.optim import Adam
 
 import numpy as np
 
-from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 from reg.nn.torch.utils import transform, inverse_transform
 from reg.nn.torch.utils import ensure_args_torch_floats
@@ -60,18 +60,17 @@ class NNRegressor(nn.Module):
         self.device = torch.device('cpu')
         self.model.to(self.device)
 
-        input = input.reshape((-1, self.input_size))
-        input = transform(input, self.input_trans)
+        input = transform(input.reshape((-1, self.input_size)), self.input_trans)
 
         with torch.no_grad():
             output = self.forward(input).cpu()
 
-        output = inverse_transform(output, self.target_trans)
-        return torch.squeeze(output)
+        output = inverse_transform(output, self.target_trans).squeeze()
+        return output
 
     def init_preprocess(self, target, input):
-        self.target_trans = PCA(n_components=self.target_size, whiten=True)
-        self.input_trans = PCA(n_components=self.input_size, whiten=True)
+        self.target_trans = StandardScaler()
+        self.input_trans = StandardScaler()
 
         self.target_trans.fit(target)
         self.input_trans.fit(input)
@@ -121,14 +120,12 @@ class DynamicNNRegressor(NNRegressor):
     @ensure_args_torch_floats
     @ensure_res_numpy_floats
     def predict(self, input):
-        input = input.reshape((-1, self.input_size))
-        input = transform(input, self.input_trans)
+        input = transform(input.reshape((-1, self.input_size)), self.input_trans)
 
         with torch.no_grad():
-                output = self.forward(input)
+            output = self.forward(input)
 
         output = inverse_transform(output, self.target_trans)
-
         if self.incremental:
             return input[..., :self.target_size] + output
         else:

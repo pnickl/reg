@@ -1,5 +1,3 @@
-import numpy as np
-
 import torch
 from torch.optim import Adam
 
@@ -85,7 +83,7 @@ class GPRegressor(gpytorch.models.ExactGP):
 
         if preprocess:
             self.init_preprocess(target, input)
-            target = np.squeeze(transform(target[:, None], self.target_trans))
+            target = transform(target[:, None], self.target_trans).squeeze()
             input = transform(input, self.input_trans)
 
         target = target.to(self.device)
