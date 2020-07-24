@@ -9,7 +9,7 @@ npr.seed(1337)
 
 D_in = 21
 
-N_train = 44484          # max 44484
+N_train = 10000          # max 44484
 
 def load_sarcos_data(D_in, N_train):
     import scipy as sc
@@ -52,7 +52,7 @@ def load_sarcos_data(D_in, N_train):
 
     return train_input, train_target, test_input, test_target
 
-fn = BayesianFourierRegressor(sizes=[D_in, 64, 1],
+fn = BayesianFourierRegressor(sizes=[D_in, 200, 1],
                               bandwidth=np.ones((D_in,)))
 
 X_train, Y_train, X_test, Y_test = load_sarcos_data(D_in, N_train)
@@ -66,7 +66,7 @@ for n in range(len(X_test)):
 
 mse = mean_squared_error(Y_test, y_pred)
 smse = 1. - r2_score(Y_test, y_pred, multioutput='variance_weighted')
-print('mse, smse', mse, smse)
+print('mse, smse:', mse, smse)
 
 from matplotlib import pyplot as plt
 plt.figure()
