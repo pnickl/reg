@@ -52,7 +52,7 @@ def load_sarcos_data(D_in, N_train):
 
     return train_input, train_target, test_input, test_target
 
-fn = BayesianFourierRegressor(sizes=[D_in, 62, 1],
+fn = BayesianFourierRegressor(sizes=[D_in, 64, 1],
                               bandwidth=np.ones((D_in,)))
 
 X_train, Y_train, X_test, Y_test = load_sarcos_data(D_in, N_train)
