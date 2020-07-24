@@ -64,7 +64,7 @@ class BayesianFourierRegressor:
         input = transform(input.reshape((-1, self.input_size)), self.input_trans)
 
         feat = self.features(input)
-        output, _, _ = self.model.posterior_predictive_gaussian(np.squeeze(feat))
+        output, _ = self.model.posterior_predictive_gaussian(np.squeeze(feat))
 
         output = inverse_transform(output, self.target_trans).squeeze()
         return output

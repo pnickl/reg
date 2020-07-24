@@ -5,7 +5,7 @@ from reg.rbf import BayesianFourierRegressor
 
 from sklearn.datasets import load_boston
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, r2_score
 
 npr.seed(1337)
 
@@ -27,4 +27,5 @@ for n in range(len(x_test)):
     y_pred[n] = fn.predict(x_test[n, :])
 
 mse = mean_squared_error(y_test, y_pred)
-print(mse)
+smse = 1. - r2_score(y_test, y_pred, multioutput='variance_weighted')
+print(mse, smse)
